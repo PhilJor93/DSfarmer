@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.13)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.14)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.13 // Version erhöht für 2-Schritte-Sendeprozess
+// @version      1.1.14 // Version erhöht für robustere HTML-Parsing-Logik
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.13'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.14'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -350,8 +350,16 @@
                                 console.log("Schritt 1 erfolgreich, Bestätigungsdialog erhalten:", response1);
 
                                 // HTML-Dialog parsen und Formulardaten extrahieren
-                                const $dialog = $(response1.dialog);
-                                const $form = $dialog.find('form[name="market"]');
+                                // Wickle den HTML-Code in ein temporäres div, um sicherzustellen, dass .find() korrekt funktioniert
+                                const $dialogContent = $('<div>').html(response1.dialog);
+                                const $form = $dialogContent.find('form[name="market"]');
+
+                                if ($form.length === 0) { // Überprüfe, ob das Formular tatsächlich gefunden wurde
+                                    alert(`FEHLER (Schritt 1 Parsing): Formular mit Namen "market" im Dialog nicht gefunden für ${source.name}.`);
+                                    reject();
+                                    return;
+                                }
+
                                 const formAction = $form.attr('action');
 
                                 if (!formAction) {
@@ -365,13 +373,12 @@
                                     postData[$(this).attr('name')] = $(this).val();
                                 });
 
-                                // Das Formular selbst enthält oft schon die Ressourcenmengen,
-                                // wir nutzen die, die wir senden wollten, es sei denn, das Formular überschreibt sie.
-                                // Wichtig ist, dass die hidden fields des Formulars für den 2. Request genutzt werden
-                                // In diesem Fall überschreiben wir die Werte im postData, da wir ja definierte Mengen senden wollen
+                                // Die im Formular vorgeschlagenen Mengen sind möglicherweise nicht die, die wir senden wollten.
+                                // Wir überschreiben sie hier mit unseren ursprünglich berechneten Werten.
                                 postData['wood'] = sendFromSource.wood;
                                 postData['stone'] = sendFromSource.stone;
                                 postData['iron'] = sendFromSource.iron;
+                                
                                 // Der "Absenden"-Button im Bestätigungsformular hat oft den Namen "confirm" oder "submit"
                                 // Wir müssen sicherstellen, dass dieser Parameter gesendet wird.
                                 postData['confirm'] = '1'; // Standardname für den Bestätigungsbutton
