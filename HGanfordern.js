@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.6)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.7)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.6 // Version erhöht für detaillierteres Debugging
-// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt Alerts UND sendet Ressourcen, mit verbessertem Debugging!)
+// @version      1.1.7 // Version erhöht, um UI-Meldungen zu reduzieren und Alert prominenter zu machen
+// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
 // @grant        none
@@ -344,7 +344,7 @@
                             let transferredStone = response.resources ? (response.resources.stone || 0) : sendFromSource.stone;
                             let transferredIron = response.resources ? (response.resources.iron || 0) : sendFromSource.iron;
 
-                            UI.SuccessMessage(`Anfrage von ${source.name} erfolgreich! Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}`, 3000);
+                            // UI.SuccessMessage(`Anfrage von ${source.name} erfolgreich! Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}`, 3000); // Entfernnt, um Meldungsflut zu reduzieren
                             console.log(`Ressourcenanfrage von ${source.name} erfolgreich. Antwort:`, response); // Volle Antwort zur Fehlersuche in der Konsole
 
                             totalSentPotential.wood += transferredWood;
@@ -359,13 +359,13 @@
                             };
                             resolve();
                         } else {
-                            UI.ErrorMessage(`Fehler bei Anforderung von ${source.name}: ${response.message || 'Unbekannter Fehler'}. Antwort: ${JSON.stringify(response)}`, 6000); // Detailliertere Fehlermeldung
+                            // UI.ErrorMessage(`Fehler bei Anforderung von ${source.name}: ${response.message || 'Unbekannter Fehler'}. Antwort: ${JSON.stringify(response)}`, 6000); // Entfernnt, um Meldungsflut zu reduzieren
                             console.error(`Ressourcenanfrage von ${source.name} fehlgeschlagen. Antwort:`, response);
                             reject();
                         }
                     },
                     function (jqXHR, textStatus, errorThrown) { // Fehler-Callback für Netzwerkprobleme
-                        UI.ErrorMessage(`Netzwerkfehler bei Anforderung von ${source.name}. Status: ${textStatus}, Fehler: ${errorThrown}`, 6000);
+                        // UI.ErrorMessage(`Netzwerkfehler bei Anforderung von ${source.name}. Status: ${textStatus}, Fehler: ${errorThrown}`, 6000); // Entfernnt, um Meldungsflut zu reduzieren
                         console.error(`Netzwerkfehler während der Ressourcenanfrage von ${source.name}. Status:`, textStatus, 'Fehler:', errorThrown, 'jqXHR:', jqXHR);
                         reject();
                     });
