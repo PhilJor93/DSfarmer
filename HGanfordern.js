@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.19)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.20)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.19 // Version erhöht für behobene Anzeige von maxIron
+// @version      1.1.20 // Version erhöht für Debug-Informationen in Alerts
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.19'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.20'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -29,7 +29,7 @@
         selectedGroupId: '0', // Standard: 'Alle Dörfer'
         maxSendWood: 0,       // Standard: Keine Begrenzung
         maxSendStone: 0,
-        maxSendIron: 0,       // KORREKT: maxSendIron
+        maxSendIron: 0,
         minWood: 10000,       // Mindestmenge Holz im Quelldorf
         minStone: 10000,      // Mindestmenge Lehm im Quelldorf
         minIron: 10000        // Mindestmenge Eisen im Quelldorf
@@ -346,8 +346,7 @@
                     }, function (response1) {
                         try {
                             if (response1.dialog) {
-                                alert(`ERFOLG (Schritt 1: Bestätigungsdialog erhalten): Anfrage von ${source.name}. Server-Antwort (JSON): ${JSON.stringify(response1)}`);
-                                console.log("Schritt 1 erfolgreich, Bestätigungsdialog erhalten:", response1);
+                                // console.log("Schritt 1 erfolgreich, Bestätigungsdialog erhalten:", response1);
 
                                 // HTML-Dialog parsen und Formulardaten extrahieren
                                 // Wickle den HTML-Code in ein temporäres div, um sicherzustellen, dass .find() korrekt funktioniert
@@ -398,28 +397,29 @@
 
                                 $.post(fullPostUrl, postData)
                                     .done(function(response2) {
-                                        console.log(`Raw Server-Antwort (Schritt 2 - $.post):`, response2);
+                                        // console.log(`Raw Server-Antwort (Schritt 2 - $.post):`, response2);
                                         let successDetected = false;
                                         let successMessage = '';
                                         let errorMessage = '';
 
+                                        let responseTitle = 'Titel nicht gefunden';
+                                        let nameIncludes = false;
+                                        let coordsIncludes = false;
+                                        const expectedCoordsInTitle = `${source.x}|${source.y}`;
+                                        const expectedNameInTitle = source.name;
+
                                         if (typeof response2 === 'string') {
                                             const $responseHtml = $('<div>').html(response2);
-                                            const responseTitle = $responseHtml.find('title').text().trim(); // Wichtig: .trim()
+                                            const titleElement = $responseHtml.find('title');
+                                            if (titleElement.length > 0) {
+                                                responseTitle = titleElement.text().trim();
+                                                nameIncludes = responseTitle.includes(expectedNameInTitle);
+                                                coordsIncludes = responseTitle.includes(expectedCoordsInTitle);
+                                            }
 
-                                            const expectedCoordsInTitle = `${source.x}|${source.y}`;
-                                            const expectedNameInTitle = source.name;
-
-                                            // Debug-Ausgaben für genaue String-Vergleiche
-                                            console.log(`Debug: responseTitle: "${responseTitle}"`);
-                                            console.log(`Debug: expectedNameInTitle: "${expectedNameInTitle}"`);
-                                            console.log(`Debug: expectedCoordsInTitle: "${expectedCoordsInTitle}"`);
-                                            console.log(`Debug: Does responseTitle include expectedNameInTitle? ${responseTitle.includes(expectedNameInTitle)}`);
-                                            console.log(`Debug: Does responseTitle include expectedCoordsInTitle? ${responseTitle.includes(expectedCoordsInTitle)}`);
-                                            
                                             // **Verbesserte Erfolgsprüfung für HTML-Antworten:**
                                             // Prüfen, ob der Titel der Antwortseite den Namen und die Koordinaten des Quelldorfs enthält.
-                                            if (responseTitle.includes(expectedNameInTitle) && responseTitle.includes(expectedCoordsInTitle)) {
+                                            if (nameIncludes && coordsIncludes) {
                                                 successDetected = true;
                                                 successMessage = 'Ressourcen erfolgreich verschickt (Server-Antwort ist die Dorf-Übersichtsseite des Quelldorfes).';
                                             }
@@ -447,11 +447,11 @@
                                         }
 
                                         if (successDetected) {
-                                            let transferredWood = sendFromSource.wood; // Da wir die genauen Werte gesendet haben, nehmen wir diese als gesendet an
+                                            let transferredWood = sendFromSource.wood;
                                             let transferredStone = sendFromSource.stone;
                                             let transferredIron = sendFromSource.iron;
 
-                                            alert(`ENDGÜLTIGER ERFOLG (via $.post): Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Details: ${successMessage}. Raw Response (verkürzt): ${JSON.stringify(response2).substring(0, 200)}...`);
+                                            alert(`ENDGÜLTIGER ERFOLG (via $.post): Anfrage von ${source.name}.\nGesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}.\nDetails: ${successMessage}.\n\n--- Debug Info ---\nAntworttitel: "${responseTitle}"\nErwarteter Name: "${expectedNameInTitle}" (Match: ${nameIncludes})\nErwartete Koordinaten: "${expectedCoordsInTitle}" (Match: ${coordsIncludes})\nRaw Response (verkürzt): ${response2.substring(0, 200)}...`);
 
                                             totalSentPotential.wood += transferredWood;
                                             totalSentPotential.stone += transferredStone;
@@ -465,7 +465,7 @@
                                             };
                                             resolve();
                                         } else {
-                                            alert(`FEHLER (Endgültiger Versand via $.post): Anfrage von ${source.name} fehlgeschlagen. Details: ${errorMessage}. Raw Response (verkürzt): ${JSON.stringify(response2).substring(0, 200)}...`);
+                                            alert(`FEHLER (Endgültiger Versand via $.post): Anfrage von ${source.name} fehlgeschlagen.\nDetails: ${errorMessage}.\n\n--- Debug Info ---\nAntworttitel: "${responseTitle}"\nErwarteter Name: "${expectedNameInTitle}" (Match: ${nameIncludes})\nErwartete Koordinaten: "${expectedCoordsInTitle}" (Match: ${coordsIncludes})\nRaw Response (verkürzt): ${response2.substring(0, 200)}...`);
                                             reject();
                                         }
                                     })
@@ -555,7 +555,9 @@
             debugOutput += `Lehm: ${Math.max(0, needed.stone - totalSentPotential.stone)}\n`;
             debugOutput += `Eisen: ${Math.max(0, needed.iron - totalSentPotential.iron)}\n\n`;
 
-            alert(debugOutput); // HIER IST DER FINALE ALERT
+            // Dies ist der finale Alert, der die Zusammenfassung anzeigt.
+            // Der Detail-Alert für den Versand ist direkt im .done() Callback für jede einzelne Anfrage.
+            // alert(debugOutput); 
 
             // Aktualisiere das ursprüngliche 'sources'-Array global für nachfolgende Anforderungen
             for (const sourceId in sourcesToUpdate) {
