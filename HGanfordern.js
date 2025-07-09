@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE
 // @namespace    http://tampermonkey.net/
-// @version      1.1.3 // Version erhöht für finalen Debug-Fix
-// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen und maximale Mengen pro Dorf. (DEBUG-MODUS: Zeigt Alerts statt Sendungen!)
+// @version      1.1.4 // Version erhöht für Mindestmengen-Funktion
+// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (DEBUG-MODUS: Zeigt Alerts statt Sendungen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
 // @grant        none
@@ -27,7 +27,10 @@
         selectedGroupId: '0', // Standard: 'Alle Dörfer'
         maxSendWood: 0,       // Standard: Keine Begrenzung
         maxSendStone: 0,
-        maxSendIron: 0
+        maxSendIron: 0,
+        minWood: 10000,       // Neu: Mindestmenge Holz im Quelldorf
+        minStone: 10000,      // Neu: Mindestmenge Lehm im Quelldorf
+        minIron: 10000        // Neu: Mindestmenge Eisen im Quelldorf
     };
     const STORAGE_KEY = 'hgholen_smart_request_settings';
 
@@ -47,11 +50,15 @@
         if (storedSettings) {
             try {
                 const parsed = JSON.parse(storedSettings);
-                // Parsed-Werte sicher in scriptSettings übernehmen
+                // Parsed-Werte sicher in scriptSettings übernehmen, mit Fallback auf Standardwerte
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
-                scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0;
-                scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0; // Korrigiert
+                scriptSettings.maxSendStone = parseInt(parsed.maxStone) || 0;
+                scriptSettings.maxSendIron = parseInt(parsed.maxIron) || 0;
+                // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
+                scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
+                scriptSettings.minStone = (parsed.minStone !== undefined && !isNaN(parseInt(parsed.minStone))) ? parseInt(parsed.minStone) : 10000;
+                scriptSettings.minIron = (parsed.minIron !== undefined && !isNaN(parseInt(parsed.minIron))) ? parseInt(parsed.minIron) : 10000;
                 return true;
             } catch (e) {
                 console.error("Fehler beim Laden der Einstellungen:", e);
@@ -120,12 +127,25 @@
                             <td>Max. Eisen pro Dorf:</td>
                             <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
                         </tr>
+                        <tr>
+                            <td>Mindest-Holz im Quelldorf:</td>
+                            <td><input type="number" id="minWoodInput" value="${scriptSettings.minWood}" min="0" class="input-nicer"></td>
+                        </tr>
+                        <tr>
+                            <td>Mindest-Lehm im Quelldorf:</td>
+                            <td><input type="number" id="minStoneInput" value="${scriptSettings.minStone}" min="0" class="input-nicer"></td>
+                        </tr>
+                        <tr>
+                            <td>Mindest-Eisen im Quelldorf:</td>
+                            <td><input type="number" id="minIronInput" value="${scriptSettings.minIron}" min="0" class="input-nicer"></td>
+                        </tr>
                     </table>
                     <br>
                     <div style="text-align: center;">
                         <input type="button" class="btn evt-confirm-btn btn-confirm-yes" id="saveSettingsBtn" value="Einstellungen speichern &amp; aktualisieren">
                     </div>
-                    <p><small>Hinweis: Eine Limit von 0 (Null) bedeutet keine Begrenzung für diese Ressource pro Quelldorf.</small></p>
+                    <p><small>Hinweis: Eine Limit von 0 (Null) bei "Max. XYZ pro Dorf" bedeutet keine Begrenzung.<br>
+                    Eine Mindestmenge von 0 (Null) bei "Mindest-XYZ im Quelldorf" bedeutet, dass das Quelldorf bis auf 0 entleert werden kann.</small></p>
                 </div>
             `;
 
@@ -136,7 +156,12 @@
                 scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
                 scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
                 scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
-                scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0; // Korrigiert
+                scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
+                // Min-Werte, wenn leer, sollen nicht zu NaN werden, sondern 0 oder der definierte Standard.
+                // parseInt(value) || 0; lässt leere Eingaben zu 0 werden, was für Min-Werte sinnvoll sein kann.
+                scriptSettings.minWood = parseInt($('#minWoodInput').val()) || 0;
+                scriptSettings.minStone = parseInt($('#minStoneInput').val()) || 0;
+                scriptSettings.minIron = parseInt($('#minIronInput').val()) || 0;
                 saveSettings();
                 Dialog.close();
                 // Quellen basierend auf neuer Gruppe neu laden und Gebäude prüfen
@@ -221,7 +246,7 @@
     /**
      * !!! DEBUG-VERSION !!!
      * Fordert Ressourcen für ein bestimmtes Gebäude intelligent aus der Dorfgruppe an.
-     * Berücksichtigt Einstellungen für maximale Mengen pro Dorf und Lagerkapazität.
+     * Berücksichtigt Einstellungen für maximale Mengen pro Dorf, Mindestbestände und Lagerkapazität.
      * Gibt Informationen per Alert aus, anstatt Ressourcen zu senden.
      * @param {number} buildingNr - Der Index des Gebäudes im resourcesNeeded-Array.
      */
@@ -259,8 +284,11 @@
             let sendFromSource = { wood: 0, stone: 0, iron: 0 };
             let currentTransferLoad = 0;
 
-            if (remainingNeeded.wood > 0 && source.wood > 0) {
-                let amount = Math.min(remainingNeeded.wood, source.wood);
+            // --- Holz ---
+            let availableToSendWood = source.wood - scriptSettings.minWood;
+            if (availableToSendWood < 0) availableToSendWood = 0; // Kann nicht unter das Minimum senden
+            if (remainingNeeded.wood > 0 && availableToSendWood > 0) {
+                let amount = Math.min(remainingNeeded.wood, availableToSendWood);
                 if (scriptSettings.maxSendWood > 0) {
                     amount = Math.min(amount, scriptSettings.maxSendWood);
                 }
@@ -269,8 +297,11 @@
                 remainingNeeded.wood -= amount;
             }
 
-            if (remainingNeeded.stone > 0 && source.stone > 0) {
-                let amount = Math.min(remainingNeeded.stone, source.stone);
+            // --- Lehm ---
+            let availableToSendStone = source.stone - scriptSettings.minStone;
+            if (availableToSendStone < 0) availableToSendStone = 0;
+            if (remainingNeeded.stone > 0 && availableToSendStone > 0) {
+                let amount = Math.min(remainingNeeded.stone, availableToSendStone);
                 if (scriptSettings.maxSendStone > 0) {
                     amount = Math.min(amount, scriptSettings.maxSendStone);
                 }
@@ -279,8 +310,11 @@
                 remainingNeeded.stone -= amount;
             }
 
-            if (remainingNeeded.iron > 0 && source.iron > 0) {
-                let amount = Math.min(remainingNeeded.iron, source.iron);
+            // --- Eisen ---
+            let availableToSendIron = source.iron - scriptSettings.minIron;
+            if (availableToSendIron < 0) availableToSendIron = 0;
+            if (remainingNeeded.iron > 0 && availableToSendIron > 0) {
+                let amount = Math.min(remainingNeeded.iron, availableToSendIron);
                 if (scriptSettings.maxSendIron > 0) {
                     amount = Math.min(amount, scriptSettings.maxSendIron);
                 }
@@ -326,7 +360,8 @@
             let debugOutput = `DEBUG-MODUS: KEINE Ressourcen gesendet!\n\n`;
             debugOutput += `Fehlende Ressourcen für Gebäude:\nHolz: ${needed.wood}\nLehm: ${needed.stone}\nEisen: ${needed.iron}\n\n`;
             debugOutput += `Ausgewählte Anforderungs-Gruppe (ID): ${scriptSettings.selectedGroupId}\n`;
-            debugOutput += `Max. Sende-Mengen pro Quelldorf (0 = unbegrenzt):\nHolz: ${scriptSettings.maxSendWood}\nLehm: ${scriptSettings.maxSendStone}\nEisen: ${scriptSettings.maxSendIron}\n\n`;
+            debugOutput += `Max. Sende-Mengen pro Quelldorf (0 = unbegrenzt):\nHolz: ${scriptSettings.maxSendWood}\nLehm: ${scriptSettings.maxSendStone}\nEisen: ${scriptSettings.maxSendIron}\n`;
+            debugOutput += `Mindest-Verbleib im Quelldorf:\nHolz: ${scriptSettings.minWood}\nLehm: ${scriptSettings.minStone}\nEisen: ${scriptSettings.minIron}\n\n`; // NEU
 
             if (Object.keys(sourcesToUpdate).length === 0 && (needed.wood > 0 || needed.stone > 0 || needed.iron > 0)) {
                 debugOutput += "Es konnten keine Ressourcen von den verfügbaren Quelldörfern zugewiesen werden (innerhalb der ausgewählten Gruppe und Einstellungen).\n\n";
