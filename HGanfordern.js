@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.4 // Version erhöht für Mindestmengen-Funktion
-// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (DEBUG-MODUS: Zeigt Alerts statt Sendungen!)
+// @version      1.1.5 // Version erhöht, um echte Requests zu aktivieren
+// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt Alerts UND sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
 // @grant        none
@@ -28,9 +28,9 @@
         maxSendWood: 0,       // Standard: Keine Begrenzung
         maxSendStone: 0,
         maxSendIron: 0,
-        minWood: 10000,       // Neu: Mindestmenge Holz im Quelldorf
-        minStone: 10000,      // Neu: Mindestmenge Lehm im Quelldorf
-        minIron: 10000        // Neu: Mindestmenge Eisen im Quelldorf
+        minWood: 10000,       // Mindestmenge Holz im Quelldorf
+        minStone: 10000,      // Mindestmenge Lehm im Quelldorf
+        minIron: 10000        // Mindestmenge Eisen im Quelldorf
     };
     const STORAGE_KEY = 'hgholen_smart_request_settings';
 
@@ -244,10 +244,9 @@
     }
 
     /**
-     * !!! DEBUG-VERSION !!!
      * Fordert Ressourcen für ein bestimmtes Gebäude intelligent aus der Dorfgruppe an.
      * Berücksichtigt Einstellungen für maximale Mengen pro Dorf, Mindestbestände und Lagerkapazität.
-     * Gibt Informationen per Alert aus, anstatt Ressourcen zu senden.
+     * Gibt Informationen per Alert aus und sendet Ressourcen.
      * @param {number} buildingNr - Der Index des Gebäudes im resourcesNeeded-Array.
      */
     window.requestRes = function(buildingNr) { // window. zur globalen Verfügbarkeit
@@ -266,14 +265,14 @@
 
         // Prüfung auf Lagerplatz im Zieldorf (einschließlich bereits angeforderter Ressourcen)
         if (currentTheoreticalWood + needed.wood > WHCap || currentTheoreticalStone + needed.stone > WHCap || currentTheoreticalIron + needed.iron > WHCap) {
-            alert("DEBUG: Nicht genug Lagerplatz im Ziel-Dorf für diese Menge an Ressourcen (bereits angeforderte Ressourcen berücksichtigt)!");
+            alert("Nicht genug Lagerplatz im Ziel-Dorf für diese Menge an Ressourcen (bereits angeforderte Ressourcen berücksichtigt)!");
             UI.ErrorMessage("Nicht genug Lagerplatz im Ziel-Dorf für diese Menge an Ressourcen (bereits angeforderte Ressourcen berücksichtigt)!", 4000);
             return;
         }
 
         let promises = [];
-        let totalSentPotential = { wood: 0, stone: 0, iron: 0 };
-        let sourcesToUpdate = {};
+        let totalSentPotential = { wood: 0, stone: 0, iron: 0 }; // Verfolgt, was TATSÄCHLICH gesendet wird
+        let sourcesToUpdate = {}; // Verfolgt die neuen Ressourcenstände der Quelldörfer
         let remainingNeeded = { ...needed }; // Kopie des Bedarfs
 
         // Erstelle eine tiefe Kopie der Quelldörfer, um sie lokal für diese Anforderung zu manipulieren,
@@ -281,6 +280,10 @@
         let availableSources = JSON.parse(JSON.stringify(sources));
 
         availableSources.forEach(source => {
+            if (remainingNeeded.wood <= 0 && remainingNeeded.stone <= 0 && remainingNeeded.iron <= 0) {
+                return false; // Beendet die each-Schleife, da Bedarf gedeckt wäre
+            }
+
             let sendFromSource = { wood: 0, stone: 0, iron: 0 };
             let currentTransferLoad = 0;
 
@@ -326,70 +329,100 @@
             let merchantsNeededForThisTransfer = Math.ceil(currentTransferLoad / 1000);
 
             if ((sendFromSource.wood > 0 || sendFromSource.stone > 0 || sendFromSource.iron > 0) && merchantsNeededForThisTransfer <= source.merchants) {
-                // *** DEBUG MODE: SIMULIERE SENDEN STATT TATSÄCHLICHEN AJAX-CALL ***
-                promises.push(new Promise((resolve) => {
-                    // Aktualisiere totalSentPotential für die Debug-Ausgabe
-                    totalSentPotential.wood += sendFromSource.wood;
-                    totalSentPotential.stone += sendFromSource.stone;
-                    totalSentPotential.iron += sendFromSource.iron;
+                promises.push(new Promise((resolve, reject) => {
+                    TribalWars.post('market', { ajaxaction: 'call', village: game_data.village.id }, {
+                        "select-village": source.id,
+                        "target_id": 0, // 0 für Zieldorf (aktuelles Dorf)
+                        "wood": sendFromSource.wood,
+                        "stone": sendFromSource.stone,
+                        "iron": sendFromSource.iron,
+                        "merchant_count": merchantsNeededForThisTransfer
+                    }, function (response) {
+                        if (response.success) {
+                            UI.SuccessMessage(`Ressourcen von Dorf ${source.name} (${source.id}) angefordert.`, 2000);
+                            // Nur aktualisieren, wenn der Versand erfolgreich war
+                            totalSentPotential.wood += sendFromSource.wood;
+                            totalSentPotential.stone += sendFromSource.stone;
+                            totalSentPotential.iron += sendFromSource.iron;
 
-                    // Speichere die theoretischen Änderungen für die Debug-Ausgabe des Quelldorfes
-                    sourcesToUpdate[source.id] = {
-                        wood: source.wood - sendFromSource.wood,
-                        stone: source.stone - sendFromSource.stone,
-                        iron: source.iron - sendFromSource.iron,
-                        merchants: source.merchants - merchantsNeededForThisTransfer
-                    };
-                    // Simuliere Asynchronität mit einem kleinen Timeout
-                    setTimeout(resolve, 50); 
+                            sourcesToUpdate[source.id] = {
+                                wood: source.wood - sendFromSource.wood,
+                                stone: source.stone - sendFromSource.stone,
+                                iron: source.iron - sendFromSource.iron,
+                                merchants: source.merchants - merchantsNeededForThisTransfer
+                            };
+                            resolve();
+                        } else {
+                            UI.ErrorMessage(`Fehler bei Anforderung von ${source.name}: ${response.message || 'Unbekannter Fehler'}`, 4000);
+                            reject();
+                        }
+                    },
+                    function () { // Fehler-Callback für Netzwerkprobleme
+                        UI.ErrorMessage(`Netzwerkfehler bei Anforderung von ${source.name}.`, 4000);
+                        reject();
+                    });
                 }));
             } else if (sendFromSource.wood > 0 || sendFromSource.stone > 0 || sendFromSource.iron > 0) {
-                // Wenn nichts gesendet wird (mangels Res/Händler), füge einen leeren Promise hinzu, damit allSettled nicht blockiert
+                // Wenn nichts gesendet werden konnte (z.B. nicht genug Händler), füge einen leeren Promise hinzu, damit allSettled nicht blockiert
                 promises.push(Promise.resolve());
-            }
-
-            // Wenn alle benötigten Ressourcen erfüllt sind, Schleife beenden (im simulierten Modus)
-            if (remainingNeeded.wood <= 0 && remainingNeeded.stone <= 0 && remainingNeeded.iron <= 0) {
-                return false; // Beendet die each-Schleife von jQuery
             }
         });
 
-        // Warte auf alle simulierten Anfragen
+        // Warte auf alle (echten oder simulierten) Anfragen
         Promise.allSettled(promises).then(() => {
-            // Nach Abschluss aller simulierten Anfragen: Bereite die Debug-Ausgabe vor
-            let debugOutput = `DEBUG-MODUS: KEINE Ressourcen gesendet!\n\n`;
-            debugOutput += `Fehlende Ressourcen für Gebäude:\nHolz: ${needed.wood}\nLehm: ${needed.stone}\nEisen: ${needed.iron}\n\n`;
+            // Nach Abschluss aller Anfragen: Aktualisiere die theoretischen Ressourcen des aktuellen Dorfes
+            currentTheoreticalWood += totalSentPotential.wood;
+            currentTheoreticalStone += totalSentPotential.stone;
+            currentTheoreticalIron += totalSentPotential.iron;
+
+            // Bereite die Debug-Ausgabe vor
+            let debugOutput = `Ressourcen wurden angefordert (falls möglich).\n\n`;
+            debugOutput += `Fehlende Ressourcen für Gebäude (vor Anfrage):\nHolz: ${needed.wood}\nLehm: ${needed.stone}\nEisen: ${needed.iron}\n\n`;
             debugOutput += `Ausgewählte Anforderungs-Gruppe (ID): ${scriptSettings.selectedGroupId}\n`;
             debugOutput += `Max. Sende-Mengen pro Quelldorf (0 = unbegrenzt):\nHolz: ${scriptSettings.maxSendWood}\nLehm: ${scriptSettings.maxSendStone}\nEisen: ${scriptSettings.maxSendIron}\n`;
-            debugOutput += `Mindest-Verbleib im Quelldorf:\nHolz: ${scriptSettings.minWood}\nLehm: ${scriptSettings.minStone}\nEisen: ${scriptSettings.minIron}\n\n`; // NEU
+            debugOutput += `Mindest-Verbleib im Quelldorf:\nHolz: ${scriptSettings.minWood}\nLehm: ${scriptSettings.minStone}\nEisen: ${scriptSettings.minIron}\n\n`;
 
             if (Object.keys(sourcesToUpdate).length === 0 && (needed.wood > 0 || needed.stone > 0 || needed.iron > 0)) {
                 debugOutput += "Es konnten keine Ressourcen von den verfügbaren Quelldörfern zugewiesen werden (innerhalb der ausgewählten Gruppe und Einstellungen).\n\n";
             } else {
-                debugOutput += `Potenzielle Quelldörfer in der ausgewählten Gruppe (und deren geplante Restmengen nach Anforderung):\n\n`;
+                debugOutput += `Ressourcen gesendet von folgenden Dörfern (Ist-Zustand nach dem Senden):\n\n`;
                 for (const sourceId in sourcesToUpdate) {
                     const originalSource = sources.find(s => s.id == sourceId); // Finde Originaldaten
-                    const updatedSource = sourcesToUpdate[sourceId]; // Finde simulierte Restdaten
+                    const updatedSource = sourcesToUpdate[sourceId]; // Finde die neuen, theoretischen Restdaten
 
                     debugOutput += `Dorf: ${originalSource.name} (${originalSource.id}) [Entf: ${originalSource.distance}]:\n`;
-                    debugOutput += `  Plant zu senden: H: ${originalSource.wood - updatedSource.wood}, L: ${originalSource.stone - updatedSource.stone}, E: ${originalSource.iron - updatedSource.iron} (Benötigte Händler: ${originalSource.merchants - updatedSource.merchants})\n`;
-                    debugOutput += `  Theoretisch verbleibend: H: ${updatedSource.wood}, L: ${updatedSource.stone}, E: ${updatedSource.iron} | Händler: ${updatedSource.merchants}\n\n`;
+                    debugOutput += `  Gesendet: H: ${originalSource.wood - updatedSource.wood}, L: ${originalSource.stone - updatedSource.stone}, E: ${originalSource.iron - updatedSource.iron} (Benötigte Händler: ${originalSource.merchants - updatedSource.merchants})\n`;
+                    debugOutput += `  Verbleibend: H: ${updatedSource.wood}, L: ${updatedSource.stone}, E: ${updatedSource.iron} | Händler: ${updatedSource.merchants}\n\n`;
                 }
             }
 
+            debugOutput += `Gesamte Ressourcen, die in diesem Zyklus gesendet wurden:\n`;
+            debugOutput += `Holz: ${totalSentPotential.wood}\n`;
+            debugOutput += `Lehm: ${totalSentPotential.stone}\n`;
+            debugOutput += `Eisen: ${totalSentPotential.iron}\n\n`;
 
-            debugOutput += `Gesamtbedarf nach dieser potenziellen Anforderung:\n`;
+            debugOutput += `Verbleibender Gesamtbedarf nach dieser Aktion:\n`;
             debugOutput += `Holz: ${Math.max(0, needed.wood - totalSentPotential.wood)}\n`;
             debugOutput += `Lehm: ${Math.max(0, needed.stone - totalSentPotential.stone)}\n`;
             debugOutput += `Eisen: ${Math.max(0, needed.iron - totalSentPotential.iron)}\n\n`;
 
             alert(debugOutput); // HIER IST DER ALERT
 
-            // Die UI-Nachrichten für Erfolg/Misserfolg wurden entfernt, da der Alert der primäre Output ist.
-            // Die "checkBuildings" Funktion wird weiterhin aufgerufen, um die UI im Spiel zu aktualisieren.
+            // Aktualisiere das ursprüngliche 'sources'-Array global für nachfolgende Anforderungen
+            for (const sourceId in sourcesToUpdate) {
+                const originalSource = sources.find(s => s.id == sourceId);
+                if (originalSource) {
+                    originalSource.wood = sourcesToUpdate[sourceId].wood;
+                    originalSource.stone = sourcesToUpdate[sourceId].stone;
+                    originalSource.iron = sourcesToUpdate[sourceId].iron;
+                    originalSource.merchants = sourcesToUpdate[sourceId].merchants;
+                }
+            }
+
+            // Prüfe die Gebäude erneut, um die Buttons basierend auf den neuen (theoretischen) Ressourcenständen zu aktualisieren
             checkBuildings();
         });
-    }; // END window.requestRes (DEBUG-VERSION)
+    }; // END window.requestRes
 
     /**
      * Berechnet die Distanz zwischen zwei Dörfern.
