@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.11)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.12)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.11 // Version erhöht für Anzeige im Einstellungsfenster
+// @version      1.1.12 // Version erhöht für Korrektur des Post-Request für Market Send
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.11'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.12'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -127,7 +127,7 @@
                         </tr>
                         <tr>
                             <td>Max. Eisen pro Dorf:</td>
-                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
+                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxIron}" min="0" class="input-nicer"></td>
                         </tr>
                         <tr>
                             <td>Mindest-Holz im Quelldorf:</td>
@@ -331,13 +331,18 @@
 
             if ((sendFromSource.wood > 0 || sendFromSource.stone > 0 || sendFromSource.iron > 0) && merchantsNeededForThisTransfer <= source.merchants) {
                 promises.push(new Promise((resolve, reject) => {
-                    TribalWars.post('market', { ajaxaction: 'call', village: game_data.village.id }, {
-                        "select-village": source.id,
-                        "target_id": game_data.village.id, // GEÄNDERT: Explizite Dorf-ID statt 0
-                        "wood": sendFromSource.wood,
-                        "stone": sendFromSource.stone,
-                        "iron": sendFromSource.iron,
-                        "merchant_count": merchantsNeededForThisTransfer
+                    // NEUER POST-REQUEST FÜR RESSOURCEN-VERSAND
+                    TribalWars.post('market', {
+                        ajax: 'send',              // Die Aktion zum Senden
+                        village: source.id,        // Die ID des sendenden Dorfes
+                        h: game_data.csrf          // Der Sicherheits-Hash
+                    }, {
+                        'target_village': game_data.village.id, // Die ID des Ziel-Dorfes
+                        'wood': sendFromSource.wood,
+                        'stone': sendFromSource.stone,
+                        'iron': sendFromSource.iron,
+                        'max_merchants': merchantsNeededForThisTransfer,
+                        'send': '1'                // Bestätigungsflag
                     }, function (response) {
                         try {
                             if (response.success) {
@@ -412,7 +417,7 @@
 
             debugOutput += `Gesamte Ressourcen, die in diesem Zyklus gesendet wurden:\n`;
             debugOutput += `Holz: ${totalSentPotential.wood}\n`;
-            debugOutput += `Lehm: ${totalSentPotential.stone}\n`;
+Output: `Lehm: ${totalSentPotential.stone}\n`;
             debugOutput += `Eisen: ${totalSentPotential.iron}\n\n`;
 
             debugOutput += `Verbleibender Gesamtbedarf nach dieser Aktion:\n`;
