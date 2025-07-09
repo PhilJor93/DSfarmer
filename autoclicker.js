@@ -3,7 +3,7 @@
 // @namespace    TribalWars
 // @version      3.3 // Version auf 3.3 aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
-// @author       KI Assistent
+// @author       Idee PhilJor93 Generiert mit Google Gemini-KI 
 // @match        https://*.die-staemme.de/game.php?*
 // @grant        none
 // ==/UserScript==
