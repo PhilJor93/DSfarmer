@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.6)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.5 // Version erhöht, um echte Requests zu aktivieren
-// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt Alerts UND sendet Ressourcen!)
+// @version      1.1.6 // Version erhöht für detaillierteres Debugging
+// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt Alerts UND sendet Ressourcen, mit verbessertem Debugging!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
 // @grant        none
@@ -257,7 +257,7 @@
         };
 
         if (needed.wood <= 0 && needed.stone <= 0 && needed.iron <= 0) {
-            alert('DEBUG: Alle benötigten Ressourcen bereits vorhanden (oder unterwegs)!');
+            alert('Alle benötigten Ressourcen bereits vorhanden (oder unterwegs)!');
             UI.InfoMessage('Alle benötigten Ressourcen bereits vorhanden (oder unterwegs)!', 2000);
             $(`td[id='request${buildingNr}']`).remove(); // Button entfernen, wenn Ressourcen gedeckt
             return;
@@ -339,26 +339,34 @@
                         "merchant_count": merchantsNeededForThisTransfer
                     }, function (response) {
                         if (response.success) {
-                            UI.SuccessMessage(`Ressourcen von Dorf ${source.name} (${source.id}) angefordert.`, 2000);
-                            // Nur aktualisieren, wenn der Versand erfolgreich war
-                            totalSentPotential.wood += sendFromSource.wood;
-                            totalSentPotential.stone += sendFromSource.stone;
-                            totalSentPotential.iron += sendFromSource.iron;
+                            // Versuche, tatsächlich übertragene Ressourcen aus der Antwort zu extrahieren, falls vorhanden
+                            let transferredWood = response.resources ? (response.resources.wood || 0) : sendFromSource.wood;
+                            let transferredStone = response.resources ? (response.resources.stone || 0) : sendFromSource.stone;
+                            let transferredIron = response.resources ? (response.resources.iron || 0) : sendFromSource.iron;
+
+                            UI.SuccessMessage(`Anfrage von ${source.name} erfolgreich! Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}`, 3000);
+                            console.log(`Ressourcenanfrage von ${source.name} erfolgreich. Antwort:`, response); // Volle Antwort zur Fehlersuche in der Konsole
+
+                            totalSentPotential.wood += transferredWood;
+                            totalSentPotential.stone += transferredStone;
+                            totalSentPotential.iron += transferredIron;
 
                             sourcesToUpdate[source.id] = {
-                                wood: source.wood - sendFromSource.wood,
-                                stone: source.stone - sendFromSource.stone,
-                                iron: source.iron - sendFromSource.iron,
-                                merchants: source.merchants - merchantsNeededForThisTransfer
+                                wood: source.wood - transferredWood,
+                                stone: source.stone - transferredStone,
+                                iron: source.iron - transferredIron,
+                                merchants: source.merchants - merchantsNeededForThisTransfer // Händler werden basierend auf dem Versuch abgezogen
                             };
                             resolve();
                         } else {
-                            UI.ErrorMessage(`Fehler bei Anforderung von ${source.name}: ${response.message || 'Unbekannter Fehler'}`, 4000);
+                            UI.ErrorMessage(`Fehler bei Anforderung von ${source.name}: ${response.message || 'Unbekannter Fehler'}. Antwort: ${JSON.stringify(response)}`, 6000); // Detailliertere Fehlermeldung
+                            console.error(`Ressourcenanfrage von ${source.name} fehlgeschlagen. Antwort:`, response);
                             reject();
                         }
                     },
-                    function () { // Fehler-Callback für Netzwerkprobleme
-                        UI.ErrorMessage(`Netzwerkfehler bei Anforderung von ${source.name}.`, 4000);
+                    function (jqXHR, textStatus, errorThrown) { // Fehler-Callback für Netzwerkprobleme
+                        UI.ErrorMessage(`Netzwerkfehler bei Anforderung von ${source.name}. Status: ${textStatus}, Fehler: ${errorThrown}`, 6000);
+                        console.error(`Netzwerkfehler während der Ressourcenanfrage von ${source.name}. Status:`, textStatus, 'Fehler:', errorThrown, 'jqXHR:', jqXHR);
                         reject();
                     });
                 }));
