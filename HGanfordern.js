@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.15)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.16)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.15 // Version erhöht für korrigierte Übergabe an TribalWars.post im zweiten Schritt
+// @version      1.1.16 // Version erhöht für direkten $.post() Aufruf im zweiten Schritt
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.15'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.16'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -385,43 +385,56 @@
 
                                 // Überprüfen ob der Hash bereits in den POST-Daten ist, ansonsten hinzufügen
                                 if (!postData['h']) {
-                                    const hashMatch = formAction.match(/h=([a-f0-9]+)/);
+                                    const hashMatch = formAction.match(/h=([a-f0-9]+)/); // Dies findet 'h' nicht, wenn es nur in den versteckten Feldern ist
                                     if (hashMatch) {
                                         postData['h'] = hashMatch[1];
                                     } else {
-                                        // Fallback, wenn Hash nicht in Action-URL, dann globalen nutzen (meist gleich)
-                                        postData['h'] = game_data.csrf;
+                                        postData['h'] = game_data.csrf; // Fallback auf den globalen CSRF-Token
                                     }
                                 }
                                 
-                                // --- Start Korrektur für Schritt 2 TribalWars.post Aufruf ---
-                                const formActionUrl = new URL(formAction, window.location.origin); // Erstelle ein URL-Objekt
-                                const targetScreen = formActionUrl.searchParams.get('screen'); // z.B. 'market'
-                                const targetMode = formActionUrl.searchParams.get('mode');     // z.B. 'send'
-                                const targetTry = formActionUrl.searchParams.get('try');       // z.B. 'confirm_send'
-                                const targetVillageId = formActionUrl.searchParams.get('village'); // z.B. '2339' (ID des Quelldorfes)
+                                // --- Start Korrektur: Direkter $.post() Aufruf für Schritt 2 ---
+                                const fullPostUrl = window.location.origin + formAction;
 
-                                // Parameter, die in der URL (GET-Parameter) übergeben werden müssen
-                                const urlParamsForPost = {
-                                    village: targetVillageId || source.id, // Nutze ID aus Formular-URL, sonst die source.id
-                                    screen: targetScreen,
-                                    mode: targetMode
-                                };
-                                if (targetTry) { // 'try' Parameter nur hinzufügen, wenn vorhanden
-                                    urlParamsForPost.try = targetTry;
-                                }
+                                $.post(fullPostUrl, postData)
+                                    .done(function(response2) {
+                                        console.log(`Raw Server-Antwort (Schritt 2 - $.post):`, response2);
+                                        // Der Tribal Wars Server antwortet oft mit HTML, auch bei Erfolg.
+                                        // Wir müssen in der Antwort nach Erfolgsmeldungen suchen.
+                                        let successDetected = false;
+                                        let successMessage = '';
+                                        let errorMessage = '';
 
-                                // Schritt 2: Sende das Bestätigungsformular mit korrekt formatierten Parametern
-                                TribalWars.post(targetScreen, urlParamsForPost, postData, function(response2) {
-                                    // --- Ende Korrektur ---
-                                    try {
-                                        if (response2.success) { // Dies sollte true sein, wenn der finale Versand geklappt hat
-                                            let transferredWood = response2.resources ? (response2.resources.wood || 0) : sendFromSource.wood;
-                                            let transferredStone = response2.resources ? (response2.resources.stone || 0) : sendFromSource.stone;
-                                            let transferredIron = response2.resources ? (response2.resources.iron || 0) : sendFromSource.iron;
+                                        if (typeof response2 === 'string') {
+                                            // Suche nach UI.SuccessMessage oder bekannten Erfolgs-Texten in HTML
+                                            if (response2.includes('UI.SuccessMessage(') || response2.includes('Du hast deine Rohstoffe erfolgreich verschickt') || response2.includes('Rohstoffe versendet')) {
+                                                successDetected = true;
+                                                successMessage = 'Ressourcen erfolgreich verschickt (Textanalyse).';
+                                            } else if (response2.includes('UI.ErrorMessage(') || response2.includes('Fehler')) {
+                                                errorMessage = 'Server meldete einen Fehler im HTML (Textanalyse).';
+                                            } else {
+                                                errorMessage = 'Unklare Serverantwort (HTML).';
+                                            }
+                                        } else if (response2 && typeof response2 === 'object') {
+                                            // Wenn es ein JSON-Objekt ist, prüfen wir auf "success" Property
+                                            if (response2.success) {
+                                                successDetected = true;
+                                                successMessage = 'Ressourcen erfolgreich verschickt (JSON-Analyse).';
+                                            } else if (response2.message) {
+                                                errorMessage = `Server meldete Fehler (JSON): ${response2.message}`;
+                                            } else {
+                                                errorMessage = 'Unklare Serverantwort (JSON).';
+                                            }
+                                        } else {
+                                            errorMessage = 'Unbekanntes Antwortformat.';
+                                        }
 
-                                            console.log(`Ressourcenanfrage von ${source.name} ENDLICH erfolgreich. Antwort:`, response2);
-                                            alert(`ENDGÜLTIGER ERFOLG: Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Server-Antwort (JSON): ${JSON.stringify(response2)}`);
+                                        if (successDetected) {
+                                            let transferredWood = sendFromSource.wood; // Da wir die genauen Werte gesendet haben, nehmen wir diese als gesendet an
+                                            let transferredStone = sendFromSource.stone;
+                                            let transferredIron = sendFromSource.iron;
+
+                                            alert(`ENDGÜLTIGER ERFOLG (via $.post): Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Details: ${successMessage}. Raw Response: ${JSON.stringify(response2).substring(0, 200)}...`);
 
                                             totalSentPotential.wood += transferredWood;
                                             totalSentPotential.stone += transferredStone;
@@ -435,177 +448,10 @@
                                             };
                                             resolve();
                                         } else {
-                                            console.error(`Ressourcenanfrage von ${source.name} ENDGÜLTIG fehlgeschlagen. Antwort:`, response2);
-                                            alert(`FEHLER (Endgültiger Versand): Anfrage von ${source.name} fehlgeschlagen. Nachricht: ${response2.message || 'Unbekannter Fehler'}. Server-Antwort (JSON): ${JSON.stringify(response2)}`);
+                                            alert(`FEHLER (Endgültiger Versand via $.post): Anfrage von ${source.name} fehlgeschlagen. Details: ${errorMessage}. Raw Response: ${JSON.stringify(response2).substring(0, 200)}...`);
                                             reject();
                                         }
-                                    } catch (e) {
-                                         alert(`FEHLER (Parsing End-Antwort): Anfrage von ${source.name}. Konnte Server-Antwort nicht verarbeiten. Fehler: ${e.message}. Raw Response: ${JSON.stringify(response2)}`);
-                                         console.error("Fehler beim Parsen der End-Antwort im Erfolgs-Callback:", e, response2);
-                                         reject();
-                                    }
-                                }, function (jqXHR2, textStatus2, errorThrown2) {
-                                    console.error(`Netzwerkfehler (Schritt 2) während der Ressourcenanfrage von ${source.name}. Status:`, textStatus2, 'Fehler:', errorThrown2, 'jqXHR:', jqXHR2);
-                                    alert(`FEHLER (Netzwerk Schritt 2): Anfrage von ${source.name}. Status: ${textStatus2}, Fehler: ${errorThrown2}.`);
-                                    reject();
-                                });
-
-                            } else if (response1.success) { // Fallback, falls der erste Request direkt erfolgreich ist ohne Dialog (unwahrscheinlich für Market Send)
-                                let transferredWood = response1.resources ? (response1.resources.wood || 0) : sendFromSource.wood;
-                                let transferredStone = response1.resources ? (response1.resources.stone || 0) : sendFromSource.stone;
-                                let transferredIron = response1.resources ? (response1.resources.iron || 0) : sendFromSource.iron;
-
-                                console.log(`Ressourcenanfrage von ${source.name} erfolgreich (ohne Dialog?). Antwort:`, response1);
-                                alert(`ERFOLG: Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Server-Antwort (JSON): ${JSON.stringify(response1)}`);
-
-                                totalSentPotential.wood += transferredWood;
-                                totalSentPotential.stone += transferredStone;
-                                totalSentPotential.iron += transferredIron;
-
-                                sourcesToUpdate[source.id] = {
-                                    wood: source.wood - transferredWood,
-                                    stone: source.stone - transferredStone,
-                                    iron: source.iron - transferredIron,
-                                    merchants: source.merchants - merchantsNeededForThisTransfer
-                                };
-                                resolve();
-                            } else {
-                                console.error(`Ressourcenanfrage von ${source.name} fehlgeschlagen (Schritt 1 ohne Dialog). Antwort:`, response1);
-                                alert(`FEHLER (Schritt 1 Backend): Anfrage von ${source.name} fehlgeschlagen. Nachricht: ${response1.message || 'Unbekannter Fehler'}. Server-Antwort (JSON): ${JSON.stringify(response1)}`);
-                                reject();
-                            }
-                        } catch (e) {
-                             alert(`FEHLER (Parsing Schritt 1 Antwort): Anfrage von ${source.name}. Konnte Server-Antwort nicht verarbeiten. Fehler: ${e.message}. Raw Response: ${JSON.stringify(response1)}`);
-                             console.error("Fehler beim Parsen der Schritt 1 Server-Antwort:", e, response1);
-                             reject();
-                        }
-                    }, function (jqXHR1, textStatus1, errorThrown1) {
-                        console.error(`Netzwerkfehler (Schritt 1) während der Ressourcenanfrage von ${source.name}. Status:`, textStatus1, 'Fehler:', errorThrown1, 'jqXHR:', jqXHR1);
-                        alert(`FEHLER (Netzwerk Schritt 1): Anfrage von ${source.name}. Status: ${textStatus1}, Fehler: ${errorThrown1}.`);
-                        reject();
-                    });
-                }));
-            } else if (sendFromSource.wood > 0 || sendFromSource.stone > 0 || sendFromSource.iron > 0) {
-                // Wenn nichts gesendet werden konnte (z.B. nicht genug Händler), füge einen leeren Promise hinzu, damit allSettled nicht blockiert
-                promises.push(Promise.resolve());
-            }
-        });
-
-        // Warte auf alle (echten oder simulierten) Anfragen
-        Promise.allSettled(promises).then(() => {
-            // Nach Abschluss aller Anfragen: Aktualisiere die theoretischen Ressourcen des aktuellen Dorfes
-            currentTheoreticalWood += totalSentPotential.wood;
-            currentTheoreticalStone += totalSentPotential.stone;
-            currentTheoreticalIron += totalSentPotential.iron;
-
-            // Bereite die Debug-Ausgabe vor
-            let debugOutput = `Ressourcen wurden angefordert (falls möglich).\n\n`;
-            debugOutput += `Fehlende Ressourcen für Gebäude (vor Anfrage):\nHolz: ${needed.wood}\nLehm: ${needed.stone}\nEisen: ${needed.iron}\n\n`;
-            debugOutput += `Ausgewählte Anforderungs-Gruppe (ID): ${scriptSettings.selectedGroupId}\n`;
-            debugOutput += `Max. Sende-Mengen pro Quelldorf (0 = unbegrenzt):\nHolz: ${scriptSettings.maxSendWood}\nLehm: ${scriptSettings.maxSendStone}\nEisen: ${scriptSettings.maxSendIron}\n`;
-            debugOutput += `Mindest-Verbleib im Quelldorf:\nHolz: ${scriptSettings.minWood}\nLehm: ${scriptSettings.minStone}\nEisen: ${scriptSettings.minIron}\n\n`;
-
-            if (Object.keys(sourcesToUpdate).length === 0 && (needed.wood > 0 || needed.stone > 0 || needed.iron > 0)) {
-                debugOutput += "Es konnten keine Ressourcen von den verfügbaren Quelldörfern zugewiesen werden (innerhalb der ausgewählten Gruppe und Einstellungen).\n\n";
-            } else {
-                debugOutput += `Ressourcen gesendet von folgenden Dörfern (Ist-Zustand nach dem Senden):\n\n`;
-                for (const sourceId in sourcesToUpdate) {
-                    const originalSource = sources.find(s => s.id == sourceId); // Finde Originaldaten
-                    const updatedSource = sourcesToUpdate[sourceId]; // Finde die neuen, theoretischen Restdaten
-
-                    debugOutput += `Dorf: ${originalSource.name} (${originalSource.id}) [Entf: ${originalSource.distance}]:\n`;
-                    debugOutput += `  Gesendet: H: ${originalSource.wood - updatedSource.wood}, L: ${originalSource.stone - updatedSource.stone}, E: ${originalSource.iron - updatedSource.iron} (Benötigte Händler: ${originalSource.merchants - updatedSource.merchants})\n`;
-    debugOutput += `  Verbleibend: H: ${updatedSource.wood}, L: ${updatedSource.stone}, E: ${updatedSource.iron} | Händler: ${updatedSource.merchants}\n\n`;
-                }
-            }
-
-            debugOutput += `Gesamte Ressourcen, die in diesem Zyklus gesendet wurden:\n`;
-            debugOutput += `Holz: ${totalSentPotential.wood}\n`;
-            debugOutput += `Lehm: ${totalSentPotential.stone}\n`;
-            debugOutput += `Eisen: ${totalSentPotential.iron}\n\n`;
-
-            debugOutput += `Verbleibender Gesamtbedarf nach dieser Aktion:\n`;
-            debugOutput += `Holz: ${Math.max(0, needed.wood - totalSentPotential.wood)}\n`;
-            debugOutput += `Lehm: ${Math.max(0, needed.stone - totalSentPotential.stone)}\n`;
-            debugOutput += `Eisen: ${Math.max(0, needed.iron - totalSentPotential.iron)}\n\n`;
-
-            alert(debugOutput); // HIER IST DER FINALE ALERT
-
-            // Aktualisiere das ursprüngliche 'sources'-Array global für nachfolgende Anforderungen
-            for (const sourceId in sourcesToUpdate) {
-                const originalSource = sources.find(s => s.id == sourceId);
-                if (originalSource) {
-                    originalSource.wood = sourcesToUpdate[sourceId].wood;
-                    originalSource.stone = sourcesToUpdate[sourceId].stone;
-                    originalSource.iron = sourcesToUpdate[sourceId].iron;
-                    originalSource.merchants = sourcesToUpdate[sourceId].merchants;
-                }
-            }
-
-            // Prüfe die Gebäude erneut, um die Buttons basierend auf den neuen (theoretischen) Ressourcenständen zu aktualisieren
-            checkBuildings();
-        });
-    }; // END window.requestRes
-
-    /**
-     * Berechnet die Distanz zwischen zwei Dörfern.
-     */
-    function checkDistance(x1, y1, x2, y2) {
-        var a = x1 - x2;
-        var b = y1 - y2;
-        return Math.round(Math.hypot(a, b));
-    }
-
-    /**
-     * Lädt alle Dörfer der aktuell ausgewählten Dorfgruppe
-     * und speichert deren Daten (Ressourcen, Händler etc.) im globalen 'sources'-Array.
-     * @param {function} callback - Eine Funktion, die nach dem Laden der Quellen ausgeführt wird.
-     */
-    function showSourceSelect(callback) {
-        sources = []; // Aktuelle Quellen leeren
-        // group-parameter basiert nun auf der ausgewählten Gruppe
-        $.get(`/game.php?&screen=overview_villages&mode=prod&group=${scriptSettings.selectedGroupId}&page=-1&`, function (resourcePage) {
-            var $rowsResPage = $(resourcePage).find("#production_table tr").not(":first");
-            $rowsResPage.each(function() {
-                var $row = $(this);
-                var tempVillageID = $row.find('span[data-id]').attr("data-id");
-                
-                // Aktuelles Dorf von den potenziellen Quellen ausschließen
-                if (tempVillageID != game_data.village.id) {
-                    var coordsMatch = $row.find("span.quickedit-vn").text().trim().match(/(\d+)\|(\d+)/);
-                    if (coordsMatch) { // Prüfe ob Koordinaten gefunden wurden
-                        var tempX = parseInt(coordsMatch[1]);
-                        var tempY = parseInt(coordsMatch[2]);
-                        var tempDistance = checkDistance(tempX, tempY, parseInt(game_data.village.x), parseInt(game_data.village.y));
-                        var tempWood = parseInt($row.find(".wood").text().replace(/\./g, ""));
-                        var tempStone = parseInt($row.find(".stone").text().replace(/\./g, ""));
-                        var tempIron = parseInt($row.find(".iron").text().replace(/\./g, ""));
-                        var tempVillageName = $row.find('.quickedit-label').text().trim();
-                        var merchantsMatch = $row.children().eq(5).text().trim().match(/(\d+)\//);
-                        var tempMerchants = parseInt(merchantsMatch[1]);
-
-                        sources.push({
-                            "name": tempVillageName,
-                            "id": tempVillageID,
-                            "x": tempX, "y": tempY, "distance": tempDistance,
-                            "wood": tempWood, "stone": tempStone, "iron": tempIron,
-                            "merchants": tempMerchants
-                        });
-                    } else {
-                        console.warn(`Koordinaten für Dorf-ID ${tempVillageID} nicht gefunden.`);
-                    }
-                }
-            });
-            // Quelldörfer nach Entfernung sortieren (nächstes zuerst)
-            sources.sort(function (left, right) { return left.distance - right.distance; });
-        })
-        .done(function () {
-            if (callback && typeof callback === 'function') {
-                callback();
-            }
-        })
-        .fail(function() {
-            UI.ErrorMessage("Fehler beim Laden der Dorfübersicht. Konnte keine Quell-Dörfer für die ausgewählte Gruppe ermitteln.", 5000);
-        });
-    }
-})();
+                                    })
+                                    .fail(function(jqXHR2, textStatus2, errorThrown2) {
+                                        console.error(`Netzwerkfehler (Schritt 2 - $.post) während der Ressourcenanfrage von ${source.name}. Status:`, textStatus2, 'Fehler:', errorThrown2, 'jqXHR:', jqXHR2);
+                                        alert(`FEHLER (Netzwerk Schritt 2 - $.post): Anfrage von ${source
