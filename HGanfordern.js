@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1 // Version erhöht für Debugging-Ausgabe
+// @version      1.1.2 // Version erhöht für Korrektur des Alerts
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen und maximale Mengen pro Dorf. (DEBUG-MODUS: Zeigt Alerts statt Sendungen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -118,7 +118,7 @@
                         </tr>
                         <tr>
                             <td>Max. Eisen pro Dorf:</td>
-                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
+                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxIron}" min="0" class="input-nicer"></td>
                         </tr>
                     </table>
                     <br>
@@ -136,7 +136,7 @@
                 scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
                 scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
                 scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
-                scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
+                scriptSettings.maxIron = parseInt($('#maxIronInput').val()) || 0; // Fix: maxSendIron statt maxIron
                 saveSettings();
                 Dialog.close();
                 // Quellen basierend auf neuer Gruppe neu laden und Gebäude prüfen
@@ -324,26 +324,13 @@
         debugOutput += `Eisen: ${Math.max(0, needed.iron - totalSentPotential.iron)}\n\n`;
 
         if (totalSentPotential.wood === 0 && totalSentPotential.stone === 0 && totalSentPotential.iron === 0) {
-            debugOutput += "Es konnten keine Ressourcen von den verfügbaren Quelldörfern zugewiesen werden.";
+            debugOutput += "Es konnten keine Ressourcen von den verfügbaren Quelldörfern zugewiesen werden (innerhalb der ausgewählten Gruppe und Einstellungen).";
         }
 
-        alert(debugOutput);
+        alert(debugOutput); // HIER IST DER ALERT
 
         // Im Debug-Modus werden keine echten Anfragen gesendet.
         // Die folgenden Zeilen sind auskommentiert oder entfernt, da sie echtes Verhalten triggern.
-        // Die UI-Nachrichten wurden zu Alerts geändert.
-
-        // update currentTheoretical resources (only if they were actually sent, which they are not in DEBUG mode)
-        // currentTheoreticalWood += totalSent.wood;
-        // currentTheoreticalStone += totalSent.stone;
-        // currentTheoreticalIron += totalSent.iron;
-
-        // UI.SuccessMessage(`Gesamte Ressourcenanforderung abgeschlossen.`, 2000);
-        
-        // update original 'sources' array (only if actual resources were sent)
-        // for (const sourceId in sourcesToUpdate) { ... }
-
-        // re-check buildings to update buttons
         checkBuildings();
     }; // END window.requestRes (DEBUG-VERSION)
 
