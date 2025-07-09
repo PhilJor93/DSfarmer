@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.17)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.19)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.17 // Version erhöht für verbesserte Erfolgsprüfung bei HTML-Antwort
+// @version      1.1.19 // Version erhöht für behobene Anzeige von maxIron
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.17'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.19'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -29,7 +29,7 @@
         selectedGroupId: '0', // Standard: 'Alle Dörfer'
         maxSendWood: 0,       // Standard: Keine Begrenzung
         maxSendStone: 0,
-        maxSendIron: 0,
+        maxSendIron: 0,       // KORREKT: maxSendIron
         minWood: 10000,       // Mindestmenge Holz im Quelldorf
         minStone: 10000,      // Mindestmenge Lehm im Quelldorf
         minIron: 10000        // Mindestmenge Eisen im Quelldorf
@@ -127,7 +127,7 @@
                         </tr>
                         <tr>
                             <td>Max. Eisen pro Dorf:</td>
-                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxIron}" min="0" class="input-nicer"></td>
+                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
                         </tr>
                         <tr>
                             <td>Mindest-Holz im Quelldorf:</td>
@@ -405,12 +405,21 @@
 
                                         if (typeof response2 === 'string') {
                                             const $responseHtml = $('<div>').html(response2);
-                                            const responseTitle = $responseHtml.find('title').text();
+                                            const responseTitle = $responseHtml.find('title').text().trim(); // Wichtig: .trim()
+
+                                            const expectedCoordsInTitle = `${source.x}|${source.y}`;
+                                            const expectedNameInTitle = source.name;
+
+                                            // Debug-Ausgaben für genaue String-Vergleiche
+                                            console.log(`Debug: responseTitle: "${responseTitle}"`);
+                                            console.log(`Debug: expectedNameInTitle: "${expectedNameInTitle}"`);
+                                            console.log(`Debug: expectedCoordsInTitle: "${expectedCoordsInTitle}"`);
+                                            console.log(`Debug: Does responseTitle include expectedNameInTitle? ${responseTitle.includes(expectedNameInTitle)}`);
+                                            console.log(`Debug: Does responseTitle include expectedCoordsInTitle? ${responseTitle.includes(expectedCoordsInTitle)}`);
                                             
                                             // **Verbesserte Erfolgsprüfung für HTML-Antworten:**
                                             // Prüfen, ob der Titel der Antwortseite den Namen und die Koordinaten des Quelldorfs enthält.
-                                            // Dies ist ein starker Indikator für einen erfolgreichen Transfer und eine Weiterleitung zur Dorf-Übersichtsseite.
-                                            if (responseTitle.includes(source.name) && responseTitle.includes(`${source.x}|${source.y}`)) {
+                                            if (responseTitle.includes(expectedNameInTitle) && responseTitle.includes(expectedCoordsInTitle)) {
                                                 successDetected = true;
                                                 successMessage = 'Ressourcen erfolgreich verschickt (Server-Antwort ist die Dorf-Übersichtsseite des Quelldorfes).';
                                             }
