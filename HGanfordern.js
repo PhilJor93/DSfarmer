@@ -1,4 +1,16 @@
-javascript: (function() {
+// ==UserScript==
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer)
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen und maximale Mengen pro Dorf.
+// @author       DeinName (Anpassbar)
+// @match        https://*.tribalwars.*/game.php*
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
     var resourcesNeeded = []; // Speichert die Bedarfe der Gebäude im aktuellen Dorf
@@ -10,7 +22,7 @@ javascript: (function() {
     var currentTheoreticalIron = 0;
     var WHCap = 0; // Maximale Lagerkapazität des aktuellen Dorfes
 
-    // --- NEU: Globale Einstellungen und Speicher-Schlüssel ---
+    // --- Einstellungen und Speicher-Schlüssel ---
     var scriptSettings = {
         selectedGroupId: '0', // Standard: 'Alle Dörfer'
         maxSendWood: 0,       // Standard: Keine Begrenzung
@@ -19,7 +31,7 @@ javascript: (function() {
     };
     const STORAGE_KEY = 'hgholen_smart_request_settings';
 
-    // --- NEU: Einstellungen speichern/laden ---
+    // --- Einstellungen speichern/laden ---
     function saveSettings() {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(scriptSettings));
@@ -39,7 +51,7 @@ javascript: (function() {
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
                 scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0;
-                scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0;
+                scriptSettings.maxIron = parseInt(parsed.maxIron) || 0; // Korrigiert falls es Iron war
                 return true;
             } catch (e) {
                 console.error("Fehler beim Laden der Einstellungen:", e);
@@ -50,7 +62,7 @@ javascript: (function() {
         return false;
     }
 
-    // --- NEU: Einstellungen-Dialog öffnen ---
+    // --- Einstellungen-Dialog öffnen ---
     function openSettingsDialog() {
         let groupOptionsHtml = `<option value="0">Alle Dörfer</option>`;
         if (typeof game_data !== 'undefined' && game_data.groups) {
@@ -226,7 +238,7 @@ javascript: (function() {
             // Fülle Holzbedarf auf, unter Berücksichtigung der Quell-Verfügbarkeit und des Bedarfs
             if (needed.wood > 0 && source.wood > 0) {
                 let amount = Math.min(needed.wood, source.wood);
-                // NEU: Berücksichtige die maximale Sende-Menge pro Dorf
+                // Berücksichtige die maximale Sende-Menge pro Dorf
                 if (scriptSettings.maxSendWood > 0) {
                     amount = Math.min(amount, scriptSettings.maxSendWood);
                 }
