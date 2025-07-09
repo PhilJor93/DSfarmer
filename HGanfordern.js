@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.9)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.11)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.9 // Version erhöht für detailliertes Debugging der Sendefunktion
+// @version      1.1.11 // Version erhöht für Anzeige im Einstellungsfenster
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -10,6 +10,8 @@
 
 (function() {
     'use strict';
+
+    const SCRIPT_VERSION = '1.1.11'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -105,7 +107,7 @@
         getGroupOptionsHtml(scriptSettings.selectedGroupId).then((groupOptionsHtml) => {
             const dialogContent = `
                 <div>
-                    <h3>Einstellungen für Ressourcenanforderung</h3>
+                    <h3>Einstellungen für Ressourcenanforderung (Version: ${SCRIPT_VERSION})</h3>
                     <table class="vis">
                         <tr>
                             <td>Dorfgruppe auswählen:</td>
@@ -331,7 +333,7 @@
                 promises.push(new Promise((resolve, reject) => {
                     TribalWars.post('market', { ajaxaction: 'call', village: game_data.village.id }, {
                         "select-village": source.id,
-                        "target_id": 0, // 0 für Zieldorf (aktuelles Dorf)
+                        "target_id": game_data.village.id, // GEÄNDERT: Explizite Dorf-ID statt 0
                         "wood": sendFromSource.wood,
                         "stone": sendFromSource.stone,
                         "iron": sendFromSource.iron,
@@ -404,7 +406,7 @@
 
                     debugOutput += `Dorf: ${originalSource.name} (${originalSource.id}) [Entf: ${originalSource.distance}]:\n`;
                     debugOutput += `  Gesendet: H: ${originalSource.wood - updatedSource.wood}, L: ${originalSource.stone - updatedSource.stone}, E: ${originalSource.iron - updatedSource.iron} (Benötigte Händler: ${originalSource.merchants - updatedSource.merchants})\n`;
-                    debugOutput += `  Verbleibend: H: ${updatedSource.wood}, L: ${updatedSource.stone}, E: ${updatedSource.iron} | Händler: ${updatedSource.merchants}\n\n`;
+    debugOutput += `  Verbleibend: H: ${updatedSource.wood}, L: ${updatedSource.stone}, E: ${updatedSource.iron} | Händler: ${updatedSource.merchants}\n\n`;
                 }
             }
 
@@ -452,7 +454,7 @@
      */
     function showSourceSelect(callback) {
         sources = []; // Aktuelle Quellen leeren
-        // group-Parameter basiert nun auf der ausgewählten Gruppe
+        // group-parameter basiert nun auf der ausgewählten Gruppe
         $.get(`/game.php?&screen=overview_villages&mode=prod&group=${scriptSettings.selectedGroupId}&page=-1&`, function (resourcePage) {
             var $rowsResPage = $(resourcePage).find("#production_table tr").not(":first");
             $rowsResPage.each(function() {
