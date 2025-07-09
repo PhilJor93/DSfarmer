@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.7)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.8)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.7 // Version erhöht, um UI-Meldungen zu reduzieren und Alert prominenter zu machen
+// @version      1.1.8 // Version erhöht, Fehler beim Laden der Max-Ressourcen behoben
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -53,8 +53,8 @@
                 // Parsed-Werte sicher in scriptSettings übernehmen, mit Fallback auf Standardwerte
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
-                scriptSettings.maxSendStone = parseInt(parsed.maxStone) || 0;
-                scriptSettings.maxSendIron = parseInt(parsed.maxIron) || 0;
+                scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0; // KORRIGIERT: parsed.maxSendStone
+                scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0;   // KORRIGIERT: parsed.maxSendIron
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
                 scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
                 scriptSettings.minStone = (parsed.minStone !== undefined && !isNaN(parseInt(parsed.minStone))) ? parseInt(parsed.minStone) : 10000;
@@ -158,7 +158,6 @@
                 scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
                 scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
                 // Min-Werte, wenn leer, sollen nicht zu NaN werden, sondern 0 oder der definierte Standard.
-                // parseInt(value) || 0; lässt leere Eingaben zu 0 werden, was für Min-Werte sinnvoll sein kann.
                 scriptSettings.minWood = parseInt($('#minWoodInput').val()) || 0;
                 scriptSettings.minStone = parseInt($('#minStoneInput').val()) || 0;
                 scriptSettings.minIron = parseInt($('#minIronInput').val()) || 0;
