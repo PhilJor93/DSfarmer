@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.12)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.13)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.12 // Version erhöht für Korrektur des Post-Request für Market Send
+// @version      1.1.13 // Version erhöht für 2-Schritte-Sendeprozess
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.12'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.13'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -331,7 +331,7 @@
 
             if ((sendFromSource.wood > 0 || sendFromSource.stone > 0 || sendFromSource.iron > 0) && merchantsNeededForThisTransfer <= source.merchants) {
                 promises.push(new Promise((resolve, reject) => {
-                    // NEUER POST-REQUEST FÜR RESSOURCEN-VERSAND
+                    // Schritt 1: Initialisiere den Handel, um das Bestätigungsformular zu erhalten
                     TribalWars.post('market', {
                         ajax: 'send',              // Die Aktion zum Senden
                         village: source.id,        // Die ID des sendenden Dorfes
@@ -342,16 +342,96 @@
                         'stone': sendFromSource.stone,
                         'iron': sendFromSource.iron,
                         'max_merchants': merchantsNeededForThisTransfer,
-                        'send': '1'                // Bestätigungsflag
-                    }, function (response) {
+                        'send': '1'                // Bestätigungsflag für den ersten Schritt
+                    }, function (response1) {
                         try {
-                            if (response.success) {
-                                let transferredWood = response.resources ? (response.resources.wood || 0) : sendFromSource.wood;
-                                let transferredStone = response.resources ? (response.resources.stone || 0) : sendFromSource.stone;
-                                let transferredIron = response.resources ? (response.resources.iron || 0) : sendFromSource.iron;
+                            if (response1.dialog) {
+                                alert(`ERFOLG (Schritt 1: Bestätigungsdialog erhalten): Anfrage von ${source.name}. Server-Antwort (JSON): ${JSON.stringify(response1)}`);
+                                console.log("Schritt 1 erfolgreich, Bestätigungsdialog erhalten:", response1);
 
-                                console.log(`Ressourcenanfrage von ${source.name} erfolgreich. Antwort:`, response); // Für Konsole
-                                alert(`ERFOLG: Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Server-Antwort (JSON): ${JSON.stringify(response)}`);
+                                // HTML-Dialog parsen und Formulardaten extrahieren
+                                const $dialog = $(response1.dialog);
+                                const $form = $dialog.find('form[name="market"]');
+                                const formAction = $form.attr('action');
+
+                                if (!formAction) {
+                                    alert(`FEHLER (Schritt 1 Parsing): Formular-Action im Dialog nicht gefunden für ${source.name}.`);
+                                    reject();
+                                    return;
+                                }
+
+                                const postData = {};
+                                $form.find('input[type="hidden"]').each(function() {
+                                    postData[$(this).attr('name')] = $(this).val();
+                                });
+
+                                // Das Formular selbst enthält oft schon die Ressourcenmengen,
+                                // wir nutzen die, die wir senden wollten, es sei denn, das Formular überschreibt sie.
+                                // Wichtig ist, dass die hidden fields des Formulars für den 2. Request genutzt werden
+                                // In diesem Fall überschreiben wir die Werte im postData, da wir ja definierte Mengen senden wollen
+                                postData['wood'] = sendFromSource.wood;
+                                postData['stone'] = sendFromSource.stone;
+                                postData['iron'] = sendFromSource.iron;
+                                // Der "Absenden"-Button im Bestätigungsformular hat oft den Namen "confirm" oder "submit"
+                                // Wir müssen sicherstellen, dass dieser Parameter gesendet wird.
+                                postData['confirm'] = '1'; // Standardname für den Bestätigungsbutton
+
+                                // Überprüfen ob der Hash bereits in den POST-Daten ist, ansonsten hinzufügen
+                                if (!postData['h']) {
+                                    const hashMatch = formAction.match(/h=([a-f0-9]+)/);
+                                    if (hashMatch) {
+                                        postData['h'] = hashMatch[1];
+                                    } else {
+                                        // Fallback, wenn Hash nicht in Action-URL, dann globalen nutzen (meist gleich)
+                                        postData['h'] = game_data.csrf;
+                                    }
+                                }
+                                
+                                // Schritt 2: Sende das Bestätigungsformular
+                                TribalWars.post(formAction, {}, postData, function(response2) {
+                                    try {
+                                        if (response2.success) { // Dies sollte true sein, wenn der finale Versand geklappt hat
+                                            let transferredWood = response2.resources ? (response2.resources.wood || 0) : sendFromSource.wood;
+                                            let transferredStone = response2.resources ? (response2.resources.stone || 0) : sendFromSource.stone;
+                                            let transferredIron = response2.resources ? (response2.resources.iron || 0) : sendFromSource.iron;
+
+                                            console.log(`Ressourcenanfrage von ${source.name} ENDLICH erfolgreich. Antwort:`, response2);
+                                            alert(`ENDGÜLTIGER ERFOLG: Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Server-Antwort (JSON): ${JSON.stringify(response2)}`);
+
+                                            totalSentPotential.wood += transferredWood;
+                                            totalSentPotential.stone += transferredStone;
+                                            totalSentPotential.iron += transferredIron;
+
+                                            sourcesToUpdate[source.id] = {
+                                                wood: source.wood - transferredWood,
+                                                stone: source.stone - transferredStone,
+                                                iron: source.iron - transferredIron,
+                                                merchants: source.merchants - merchantsNeededForThisTransfer
+                                            };
+                                            resolve();
+                                        } else {
+                                            console.error(`Ressourcenanfrage von ${source.name} ENDGÜLTIG fehlgeschlagen. Antwort:`, response2);
+                                            alert(`FEHLER (Endgültiger Versand): Anfrage von ${source.name} fehlgeschlagen. Nachricht: ${response2.message || 'Unbekannter Fehler'}. Server-Antwort (JSON): ${JSON.stringify(response2)}`);
+                                            reject();
+                                        }
+                                    } catch (e) {
+                                         alert(`FEHLER (Parsing End-Antwort): Anfrage von ${source.name}. Konnte Server-Antwort nicht verarbeiten. Fehler: ${e.message}. Raw Response: ${JSON.stringify(response2)}`);
+                                         console.error("Fehler beim Parsen der End-Antwort im Erfolgs-Callback:", e, response2);
+                                         reject();
+                                    }
+                                }, function (jqXHR2, textStatus2, errorThrown2) {
+                                    console.error(`Netzwerkfehler (Schritt 2) während der Ressourcenanfrage von ${source.name}. Status:`, textStatus2, 'Fehler:', errorThrown2, 'jqXHR:', jqXHR2);
+                                    alert(`FEHLER (Netzwerk Schritt 2): Anfrage von ${source.name}. Status: ${textStatus2}, Fehler: ${errorThrown2}.`);
+                                    reject();
+                                });
+
+                            } else if (response1.success) { // Fallback, falls der erste Request direkt erfolgreich ist ohne Dialog (unwahrscheinlich für Market Send)
+                                let transferredWood = response1.resources ? (response1.resources.wood || 0) : sendFromSource.wood;
+                                let transferredStone = response1.resources ? (response1.resources.stone || 0) : sendFromSource.stone;
+                                let transferredIron = response1.resources ? (response1.resources.iron || 0) : sendFromSource.iron;
+
+                                console.log(`Ressourcenanfrage von ${source.name} erfolgreich (ohne Dialog?). Antwort:`, response1);
+                                alert(`ERFOLG: Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Server-Antwort (JSON): ${JSON.stringify(response1)}`);
 
                                 totalSentPotential.wood += transferredWood;
                                 totalSentPotential.stone += transferredStone;
@@ -365,19 +445,18 @@
                                 };
                                 resolve();
                             } else {
-                                console.error(`Ressourcenanfrage von ${source.name} fehlgeschlagen. Antwort:`, response); // Für Konsole
-                                alert(`FEHLER (Backend): Anfrage von ${source.name} fehlgeschlagen. Nachricht: ${response.message || 'Unbekannter Fehler'}. Server-Antwort (JSON): ${JSON.stringify(response)}`);
+                                console.error(`Ressourcenanfrage von ${source.name} fehlgeschlagen (Schritt 1 ohne Dialog). Antwort:`, response1);
+                                alert(`FEHLER (Schritt 1 Backend): Anfrage von ${source.name} fehlgeschlagen. Nachricht: ${response1.message || 'Unbekannter Fehler'}. Server-Antwort (JSON): ${JSON.stringify(response1)}`);
                                 reject();
                             }
                         } catch (e) {
-                             alert(`FEHLER (Parsing Antwort): Anfrage von ${source.name}. Konnte Server-Antwort nicht verarbeiten. Fehler: ${e.message}. Raw Response: ${JSON.stringify(response)}`);
-                             console.error("Fehler beim Parsen der Server-Antwort im Erfolgs-Callback:", e, response); // Für Konsole
+                             alert(`FEHLER (Parsing Schritt 1 Antwort): Anfrage von ${source.name}. Konnte Server-Antwort nicht verarbeiten. Fehler: ${e.message}. Raw Response: ${JSON.stringify(response1)}`);
+                             console.error("Fehler beim Parsen der Schritt 1 Server-Antwort:", e, response1);
                              reject();
                         }
-                    },
-                    function (jqXHR, textStatus, errorThrown) { // Fehler-Callback für Netzwerkprobleme
-                        console.error(`Netzwerkfehler während der Ressourcenanfrage von ${source.name}. Status:`, textStatus, 'Fehler:', errorThrown, 'jqXHR:', jqXHR); // Für Konsole
-                        alert(`FEHLER (Netzwerk): Anfrage von ${source.name}. Status: ${textStatus}, Fehler: ${errorThrown}.`);
+                    }, function (jqXHR1, textStatus1, errorThrown1) {
+                        console.error(`Netzwerkfehler (Schritt 1) während der Ressourcenanfrage von ${source.name}. Status:`, textStatus1, 'Fehler:', errorThrown1, 'jqXHR:', jqXHR1);
+                        alert(`FEHLER (Netzwerk Schritt 1): Anfrage von ${source.name}. Status: ${textStatus1}, Fehler: ${errorThrown1}.`);
                         reject();
                     });
                 }));
@@ -417,7 +496,7 @@
 
             debugOutput += `Gesamte Ressourcen, die in diesem Zyklus gesendet wurden:\n`;
             debugOutput += `Holz: ${totalSentPotential.wood}\n`;
-Output: `Lehm: ${totalSentPotential.stone}\n`;
+            debugOutput += `Lehm: ${totalSentPotential.stone}\n`;
             debugOutput += `Eisen: ${totalSentPotential.iron}\n\n`;
 
             debugOutput += `Verbleibender Gesamtbedarf nach dieser Aktion:\n`;
