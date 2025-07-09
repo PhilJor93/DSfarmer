@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.14)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.15)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.14 // Version erhöht für robustere HTML-Parsing-Logik
+// @version      1.1.15 // Version erhöht für korrigierte Übergabe an TribalWars.post im zweiten Schritt
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.14'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.15'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -394,8 +394,26 @@
                                     }
                                 }
                                 
-                                // Schritt 2: Sende das Bestätigungsformular
-                                TribalWars.post(formAction, {}, postData, function(response2) {
+                                // --- Start Korrektur für Schritt 2 TribalWars.post Aufruf ---
+                                const formActionUrl = new URL(formAction, window.location.origin); // Erstelle ein URL-Objekt
+                                const targetScreen = formActionUrl.searchParams.get('screen'); // z.B. 'market'
+                                const targetMode = formActionUrl.searchParams.get('mode');     // z.B. 'send'
+                                const targetTry = formActionUrl.searchParams.get('try');       // z.B. 'confirm_send'
+                                const targetVillageId = formActionUrl.searchParams.get('village'); // z.B. '2339' (ID des Quelldorfes)
+
+                                // Parameter, die in der URL (GET-Parameter) übergeben werden müssen
+                                const urlParamsForPost = {
+                                    village: targetVillageId || source.id, // Nutze ID aus Formular-URL, sonst die source.id
+                                    screen: targetScreen,
+                                    mode: targetMode
+                                };
+                                if (targetTry) { // 'try' Parameter nur hinzufügen, wenn vorhanden
+                                    urlParamsForPost.try = targetTry;
+                                }
+
+                                // Schritt 2: Sende das Bestätigungsformular mit korrekt formatierten Parametern
+                                TribalWars.post(targetScreen, urlParamsForPost, postData, function(response2) {
+                                    // --- Ende Korrektur ---
                                     try {
                                         if (response2.success) { // Dies sollte true sein, wenn der finale Versand geklappt hat
                                             let transferredWood = response2.resources ? (response2.resources.wood || 0) : sendFromSource.wood;
