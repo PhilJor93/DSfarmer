@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Tribal Wars Smart Resource Request (Anfrage Helfer)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1 // Version erhöht wegen Gruppen-Fix
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen und maximale Mengen pro Dorf.
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -51,7 +51,7 @@
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
                 scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0;
-                scriptSettings.maxIron = parseInt(parsed.maxIron) || 0; // Korrigiert falls es Iron war
+                scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0;
                 return true;
             } catch (e) {
                 console.error("Fehler beim Laden der Einstellungen:", e);
@@ -62,67 +62,88 @@
         return false;
     }
 
+    // --- Hilfsfunktion zum Abrufen der Dorfgruppen-Optionen ---
+    function getGroupOptionsHtml(selectedId) {
+        return new Promise((resolve, reject) => {
+            $.ajax({
+                url: TribalWars.buildURL('GET', 'groups', { ajax: 'load_group_menu' }),
+                method: 'GET',
+                dataType: 'json' // Erwarte JSON-Antwort
+            })
+            .done(function(data) {
+                let html = `<option value="0">Alle Dörfer</option>`;
+                if (data && data.result) {
+                    data.result.forEach((val) => {
+                        if (val.type == 'separator') {
+                            html += `<option disabled=""/>`;
+                        } else {
+                            html += `<option value="${val.group_id}" ${val.group_id == selectedId ? 'selected' : ''}>${val.name}</option>`;
+                        }
+                    });
+                } else {
+                    console.warn("Keine Dorfgruppen aus dem API-Aufruf erhalten oder unerwartetes Format.", data);
+                }
+                resolve(html);
+            })
+            .fail(function(jqXHR, textStatus, errorThrown) {
+                console.error("Fehler beim Laden der Dorfgruppen:", textStatus, errorThrown, jqXHR);
+                UI.ErrorMessage("Fehler beim Laden der Dorfgruppen. Nur 'Alle Dörfer' verfügbar.", 3000);
+                resolve(`<option value="0">Alle Dörfer</option>`); // Fallback, falls API-Aufruf fehlschlägt
+            });
+        });
+    }
+
     // --- Einstellungen-Dialog öffnen ---
     function openSettingsDialog() {
-        let groupOptionsHtml = `<option value="0">Alle Dörfer</option>`;
-        if (typeof game_data !== 'undefined' && game_data.groups) {
-            for (const groupId in game_data.groups) {
-                if (game_data.groups.hasOwnProperty(groupId)) {
-                    const groupName = game_data.groups[groupId];
-                    const selectedAttr = (groupId === scriptSettings.selectedGroupId) ? 'selected' : '';
-                    groupOptionsHtml += `<option value="${groupId}" ${selectedAttr}>${groupName}</option>`;
-                }
-            }
-        } else {
-             console.warn("game_data.groups nicht verfügbar. Gruppenliste möglicherweise unvollständig.");
-        }
-
-        const dialogContent = `
-            <div>
-                <h3>Einstellungen für Ressourcenanforderung</h3>
-                <table class="vis">
-                    <tr>
-                        <td>Dorfgruppe auswählen:</td>
-                        <td>
-                            <select id="resourceGroupSelect" class="input-nicer" style="width: 100%;">
-                                ${groupOptionsHtml}
-                            </select>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Max. Holz pro Dorf:</td>
-                        <td><input type="number" id="maxWoodInput" value="${scriptSettings.maxSendWood}" min="0" class="input-nicer"></td>
-                    </tr>
-                    <tr>
-                        <td>Max. Lehm pro Dorf:</td>
-                        <td><input type="number" id="maxStoneInput" value="${scriptSettings.maxSendStone}" min="0" class="input-nicer"></td>
-                    </tr>
-                    <tr>
-                        <td>Max. Eisen pro Dorf:</td>
-                        <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
-                    </tr>
-                </table>
-                <br>
-                <div style="text-align: center;">
-                    <input type="button" class="btn evt-confirm-btn btn-confirm-yes" id="saveSettingsBtn" value="Einstellungen speichern &amp; aktualisieren">
+        // Rufe die Gruppenoptionen asynchron ab
+        getGroupOptionsHtml(scriptSettings.selectedGroupId).then((groupOptionsHtml) => {
+            const dialogContent = `
+                <div>
+                    <h3>Einstellungen für Ressourcenanforderung</h3>
+                    <table class="vis">
+                        <tr>
+                            <td>Dorfgruppe auswählen:</td>
+                            <td>
+                                <select id="resourceGroupSelect" class="input-nicer" style="width: 100%;">
+                                    ${groupOptionsHtml}
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>Max. Holz pro Dorf:</td>
+                            <td><input type="number" id="maxWoodInput" value="${scriptSettings.maxSendWood}" min="0" class="input-nicer"></td>
+                        </tr>
+                        <tr>
+                            <td>Max. Lehm pro Dorf:</td>
+                            <td><input type="number" id="maxStoneInput" value="${scriptSettings.maxSendStone}" min="0" class="input-nicer"></td>
+                        </tr>
+                        <tr>
+                            <td>Max. Eisen pro Dorf:</td>
+                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
+                        </tr>
+                    </table>
+                    <br>
+                    <div style="text-align: center;">
+                        <input type="button" class="btn evt-confirm-btn btn-confirm-yes" id="saveSettingsBtn" value="Einstellungen speichern &amp; aktualisieren">
+                    </div>
+                    <p><small>Hinweis: Eine Limit von 0 (Null) bedeutet keine Begrenzung für diese Ressource pro Quelldorf.</small></p>
                 </div>
-                <p><small>Hinweis: Eine Limit von 0 (Null) bedeutet keine Begrenzung für diese Ressource pro Quelldorf.</small></p>
-            </div>
-        `;
+            `;
 
-        Dialog.show("Ressourcen-Anforderung Einstellungen", dialogContent);
+            Dialog.show("Ressourcen-Anforderung Einstellungen", dialogContent);
 
-        // Event Listener für den Speichern-Button
-        $('#saveSettingsBtn').on('click', function() {
-            scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
-            scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
-            scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
-            scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
-            saveSettings();
-            Dialog.close();
-            // Quellen basierend auf neuer Gruppe neu laden und Gebäude prüfen
-            showSourceSelect(function() {
-                checkBuildings();
+            // Event Listener für den Speichern-Button
+            $('#saveSettingsBtn').on('click', function() {
+                scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
+                scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
+                scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
+                scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
+                saveSettings();
+                Dialog.close();
+                // Quellen basierend auf neuer Gruppe neu laden und Gebäude prüfen
+                showSourceSelect(function() {
+                    checkBuildings();
+                });
             });
         });
     }
@@ -203,7 +224,7 @@
      * Berücksichtigt Einstellungen für maximale Mengen pro Dorf und Lagerkapazität.
      * @param {number} buildingNr - Der Index des Gebäudes im resourcesNeeded-Array.
      */
-    function requestRes(buildingNr) {
+    window.requestRes = function(buildingNr) { // window. zur globalen Verfügbarkeit
         let needed = {
             wood: Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood),
             stone: Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone),
@@ -212,7 +233,7 @@
 
         if (needed.wood <= 0 && needed.stone <= 0 && needed.iron <= 0) {
             UI.InfoMessage('Alle benötigten Ressourcen bereits vorhanden (oder unterwegs)!', 2000);
-            $(`input[id='request${buildingNr}']`).remove(); // Button entfernen, wenn Ressourcen gedeckt
+            $(`td[id='request${buildingNr}']`).remove(); // Button entfernen, wenn Ressourcen gedeckt
             return;
         }
 
@@ -375,23 +396,27 @@
                 // Aktuelles Dorf von den potenziellen Quellen ausschließen
                 if (tempVillageID != game_data.village.id) {
                     var coordsMatch = $row.find("span.quickedit-vn").text().trim().match(/(\d+)\|(\d+)/);
-                    var tempX = parseInt(coordsMatch[1]);
-                    var tempY = parseInt(coordsMatch[2]);
-                    var tempDistance = checkDistance(tempX, tempY, parseInt(game_data.village.x), parseInt(game_data.village.y));
-                    var tempWood = parseInt($row.find(".wood").text().replace(/\./g, ""));
-                    var tempStone = parseInt($row.find(".stone").text().replace(/\./g, ""));
-                    var tempIron = parseInt($row.find(".iron").text().replace(/\./g, ""));
-                    var tempVillageName = $row.find('.quickedit-label').text().trim();
-                    var merchantsMatch = $row.children().eq(5).text().trim().match(/(\d+)\//);
-                    var tempMerchants = parseInt(merchantsMatch[1]);
+                    if (coordsMatch) { // Prüfe ob Koordinaten gefunden wurden
+                        var tempX = parseInt(coordsMatch[1]);
+                        var tempY = parseInt(coordsMatch[2]);
+                        var tempDistance = checkDistance(tempX, tempY, parseInt(game_data.village.x), parseInt(game_data.village.y));
+                        var tempWood = parseInt($row.find(".wood").text().replace(/\./g, ""));
+                        var tempStone = parseInt($row.find(".stone").text().replace(/\./g, ""));
+                        var tempIron = parseInt($row.find(".iron").text().replace(/\./g, ""));
+                        var tempVillageName = $row.find('.quickedit-label').text().trim();
+                        var merchantsMatch = $row.children().eq(5).text().trim().match(/(\d+)\//);
+                        var tempMerchants = parseInt(merchantsMatch[1]);
 
-                    sources.push({
-                        "name": tempVillageName,
-                        "id": tempVillageID,
-                        "x": tempX, "y": tempY, "distance": tempDistance,
-                        "wood": tempWood, "stone": tempStone, "iron": tempIron,
-                        "merchants": tempMerchants
-                    });
+                        sources.push({
+                            "name": tempVillageName,
+                            "id": tempVillageID,
+                            "x": tempX, "y": tempY, "distance": tempDistance,
+                            "wood": tempWood, "stone": tempStone, "iron": tempIron,
+                            "merchants": tempMerchants
+                        });
+                    } else {
+                        console.warn(`Koordinaten für Dorf-ID ${tempVillageID} nicht gefunden.`);
+                    }
                 }
             });
             // Quelldörfer nach Entfernung sortieren (nächstes zuerst)
