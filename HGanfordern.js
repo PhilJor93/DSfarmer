@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.16)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.17)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.16 // Version erhöht für direkten $.post() Aufruf im zweiten Schritt
+// @version      1.1.17 // Version erhöht für verbesserte Erfolgsprüfung bei HTML-Antwort
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.16'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.17'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -399,24 +399,32 @@
                                 $.post(fullPostUrl, postData)
                                     .done(function(response2) {
                                         console.log(`Raw Server-Antwort (Schritt 2 - $.post):`, response2);
-                                        // Der Tribal Wars Server antwortet oft mit HTML, auch bei Erfolg.
-                                        // Wir müssen in der Antwort nach Erfolgsmeldungen suchen.
                                         let successDetected = false;
                                         let successMessage = '';
                                         let errorMessage = '';
 
                                         if (typeof response2 === 'string') {
-                                            // Suche nach UI.SuccessMessage oder bekannten Erfolgs-Texten in HTML
-                                            if (response2.includes('UI.SuccessMessage(') || response2.includes('Du hast deine Rohstoffe erfolgreich verschickt') || response2.includes('Rohstoffe versendet')) {
+                                            const $responseHtml = $('<div>').html(response2);
+                                            const responseTitle = $responseHtml.find('title').text();
+                                            
+                                            // **Verbesserte Erfolgsprüfung für HTML-Antworten:**
+                                            // Prüfen, ob der Titel der Antwortseite den Namen und die Koordinaten des Quelldorfs enthält.
+                                            // Dies ist ein starker Indikator für einen erfolgreichen Transfer und eine Weiterleitung zur Dorf-Übersichtsseite.
+                                            if (responseTitle.includes(source.name) && responseTitle.includes(`${source.x}|${source.y}`)) {
                                                 successDetected = true;
-                                                successMessage = 'Ressourcen erfolgreich verschickt (Textanalyse).';
+                                                successMessage = 'Ressourcen erfolgreich verschickt (Server-Antwort ist die Dorf-Übersichtsseite des Quelldorfes).';
+                                            }
+                                            // Bestandsprüfung für alte Erfolgsmeldungen (falls sie doch vorkommen)
+                                            else if (response2.includes('UI.SuccessMessage(') || response2.includes('Du hast deine Rohstoffe erfolgreich verschickt') || response2.includes('Rohstoffe versendet')) {
+                                                successDetected = true;
+                                                successMessage = 'Ressourcen erfolgreich verschickt (Textanalyse in HTML).';
                                             } else if (response2.includes('UI.ErrorMessage(') || response2.includes('Fehler')) {
                                                 errorMessage = 'Server meldete einen Fehler im HTML (Textanalyse).';
                                             } else {
                                                 errorMessage = 'Unklare Serverantwort (HTML).';
                                             }
                                         } else if (response2 && typeof response2 === 'object') {
-                                            // Wenn es ein JSON-Objekt ist, prüfen wir auf "success" Property
+                                            // Prüfung für JSON-Antworten (weniger wahrscheinlich für diesen Schritt)
                                             if (response2.success) {
                                                 successDetected = true;
                                                 successMessage = 'Ressourcen erfolgreich verschickt (JSON-Analyse).';
@@ -434,7 +442,7 @@
                                             let transferredStone = sendFromSource.stone;
                                             let transferredIron = sendFromSource.iron;
 
-                                            alert(`ENDGÜLTIGER ERFOLG (via $.post): Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Details: ${successMessage}. Raw Response: ${JSON.stringify(response2).substring(0, 200)}...`);
+                                            alert(`ENDGÜLTIGER ERFOLG (via $.post): Anfrage von ${source.name}. Gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Details: ${successMessage}. Raw Response (verkürzt): ${JSON.stringify(response2).substring(0, 200)}...`);
 
                                             totalSentPotential.wood += transferredWood;
                                             totalSentPotential.stone += transferredStone;
@@ -448,7 +456,7 @@
                                             };
                                             resolve();
                                         } else {
-                                            alert(`FEHLER (Endgültiger Versand via $.post): Anfrage von ${source.name} fehlgeschlagen. Details: ${errorMessage}. Raw Response: ${JSON.stringify(response2).substring(0, 200)}...`);
+                                            alert(`FEHLER (Endgültiger Versand via $.post): Anfrage von ${source.name} fehlgeschlagen. Details: ${errorMessage}. Raw Response (verkürzt): ${JSON.stringify(response2).substring(0, 200)}...`);
                                             reject();
                                         }
                                     })
