@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.26)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.27)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.26 // Version erhöht für Korrektur des 'send' Parameters im ersten POST
+// @version      1.1.27 // Version erhöht für Korrektur des 'max_merchants' Parameters im ersten POST
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.26'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.27'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -127,7 +127,7 @@
                         </tr>
                         <tr>
                             <td>Max. Eisen pro Dorf:</td>
-                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
+                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxIron}" min="0" class="input-nicer"></td>
                         </tr>
                         <tr>
                             <td>Mindest-Holz im Quelldorf:</td>
@@ -340,8 +340,8 @@
                         'target': game_data.village.id, // 'target' für die initiale Anfrage
                         'wood': sendFromSource.wood,
                         'stone': sendFromSource.stone,
-                        'iron': sendFromSource.iron,
-                        'max_merchants': merchantsNeededForThisTransfer
+                        'iron': sendFromSource.iron
+                        // 'max_merchants': merchantsNeededForThisTransfer // <--- ENTFERNT: Diesen Parameter nur im finalen Bestätigungs-POST senden
                         // 'send': '1' // <--- ENTFERNT: Dieser Parameter sollte NUR im finalen Bestätigungs-POST gesendet werden
                     }, function (response1) {
                         try {
@@ -575,7 +575,7 @@
                 const originalSource = sources.find(s => s.id == sourceId);
                 if (originalSource) {
                     originalSource.wood = sourcesToUpdate[sourceId].wood;
-                    originalSource.stone = sourcesToUpdate[sourceId].stone;
+                    originalSource.stone = sourcesToupdate[sourceId].stone;
                     originalSource.iron = sourcesToUpdate[sourceId].iron;
                     originalSource.merchants = sourcesToUpdate[sourceId].merchants;
                 }
