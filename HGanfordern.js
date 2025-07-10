@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.27)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.28)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.27 // Version erhöht für Korrektur des 'max_merchants' Parameters im ersten POST
+// @version      1.1.28 // Version erhöht für spekulative Zuweisung des 'nameless' Feldes zu 'ch'
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.27'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.28'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -341,8 +341,8 @@
                         'wood': sendFromSource.wood,
                         'stone': sendFromSource.stone,
                         'iron': sendFromSource.iron
-                        // 'max_merchants': merchantsNeededForThisTransfer // <--- ENTFERNT: Diesen Parameter nur im finalen Bestätigungs-POST senden
-                        // 'send': '1' // <--- ENTFERNT: Dieser Parameter sollte NUR im finalen Bestätigungs-POST gesendet werden
+                        // 'max_merchants': merchantsNeededForThisTransfer // ENTFERNT: Diesen Parameter nicht im ersten POST senden
+                        // 'send': '1' // ENTFERNT: Dieser Parameter sollte NUR im finalen Bestätigungs-POST gesendet werden
                     }, function (response1) {
                         try {
                             if (response1.dialog) {
@@ -367,7 +367,7 @@
                                 }
 
                                 const postData = {};
-                                const rawHiddenInputs = []; // NEU: Array zum Speichern der Rohdaten versteckter Inputs
+                                const rawHiddenInputs = []; // Array zum Speichern der Rohdaten versteckter Inputs
                                 let targetFieldName = 'target_village'; // Standardname für das Ziel-Feld im finalen POST
 
                                 $form.find('input[type="hidden"]').each(function() {
@@ -382,8 +382,15 @@
                                             targetFieldName = 'target';
                                         }
                                     } else {
-                                        // Für Debugging: unbekannte Felder erfassen. Werden später explizit überschrieben/gesetzt
-                                        postData[value] = value;
+                                        // Dies ist der problematische namenlose Input.
+                                        // Wenn sein Wert eine Zahl ist (wie 106000, 110000), nehmen wir an, es ist ein 'ch' Parameter.
+                                        if (!isNaN(parseInt(value)) && String(parseInt(value)) === value) {
+                                            postData['ch'] = value; // Weise es 'ch' zu
+                                            console.log(`DEBUG: Namenloser Input-Wert "${value}" wurde dem 'ch'-Parameter zugewiesen.`);
+                                        } else {
+                                            // Fallback für andere namenlose Inputs
+                                            postData[value] = value;
+                                        }
                                     }
                                 });
 
@@ -404,6 +411,9 @@
                                 // Explizites Setzen der X- und Y-Koordinaten des Ziel-Dorfes
                                 postData['x'] = game_data.village.x; 
                                 postData['y'] = game_data.village.y;
+
+                                // Explizites Setzen der benötigten Händler
+                                postData['max_merchants'] = merchantsNeededForThisTransfer;
 
                                 const fullPostUrl = window.location.origin + formAction;
 
@@ -575,7 +585,7 @@
                 const originalSource = sources.find(s => s.id == sourceId);
                 if (originalSource) {
                     originalSource.wood = sourcesToUpdate[sourceId].wood;
-                    originalSource.stone = sourcesToupdate[sourceId].stone;
+                    originalSource.stone = sourcesToUpdate[sourceId].stone;
                     originalSource.iron = sourcesToUpdate[sourceId].iron;
                     originalSource.merchants = sourcesToUpdate[sourceId].merchants;
                 }
