@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.21)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.22)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.21 // Version erhöht für Korrektur der Namenserkennung (Kxx)
+// @version      1.1.22 // Version erhöht für POST-Details im Alert
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.21'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.22'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -395,6 +395,9 @@
                                 // --- Start Korrektur: Direkter $.post() Aufruf für Schritt 2 ---
                                 const fullPostUrl = window.location.origin + formAction;
 
+                                // NEUER DEBUG ALERT: Zeigt die POST-Details für Schritt 2
+                                alert(`DEBUG: Schritt 2 POST-Details für ${source.name}\n\nURL: ${fullPostUrl}\n\nPOST Data: ${JSON.stringify(postData, null, 2)}`);
+
                                 $.post(fullPostUrl, postData)
                                     .done(function(response2) {
                                         // console.log(`Raw Server-Antwort (Schritt 2 - $.post):`, response2);
@@ -422,7 +425,7 @@
                                             }
 
                                             // **Verbesserte Erfolgsprüfung für HTML-Antworten:**
-                                            // Prüfen, ob der Titel der Antwortseite den Namen und die Koordinaten des Quelldorfs enthält.
+                                            // Prüfen, ob der Titel der Antwortseite den Namen und die Koordinaten des Quelldorfes enthält.
                                             if (nameIncludes && coordsIncludes) {
                                                 successDetected = true;
                                                 successMessage = 'Ressourcen erfolgreich verschickt (Server-Antwort ist die Dorf-Übersichtsseite des Quelldorfes).';
