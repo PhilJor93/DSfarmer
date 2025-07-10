@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.25)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.26)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.25 // Version erhöht für Korrektur des 'target' Parameters im ersten POST
+// @version      1.1.26 // Version erhöht für Korrektur des 'send' Parameters im ersten POST
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.25'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.26'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -337,12 +337,12 @@
                         village: source.id,        // Die ID des sendenden Dorfes
                         h: game_data.csrf          // Der Sicherheits-Hash
                     }, { // <<< Diese Parameter gehen mit dem ersten POST zur Server-Initialisierung
-                        'target': game_data.village.id, // <--- HIER KORRIGIERT: 'target' statt 'target_village'
+                        'target': game_data.village.id, // 'target' für die initiale Anfrage
                         'wood': sendFromSource.wood,
                         'stone': sendFromSource.stone,
                         'iron': sendFromSource.iron,
-                        'max_merchants': merchantsNeededForThisTransfer,
-                        'send': '1'                // Bestätigungsflag für den ersten Schritt
+                        'max_merchants': merchantsNeededForThisTransfer
+                        // 'send': '1' // <--- ENTFERNT: Dieser Parameter sollte NUR im finalen Bestätigungs-POST gesendet werden
                     }, function (response1) {
                         try {
                             if (response1.dialog) {
