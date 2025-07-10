@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.30)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.31)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.30 // Version erhöht für Integration der neuen Einzelschritt-Versandlogik
+// @version      1.1.31 // Version erhöht für Korrektur der Erfolgsmeldung beim Versand
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.30'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.31'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -341,11 +341,11 @@
                         "wood" : sendFromSource.wood,
                         "stone" : sendFromSource.stone,
                         "iron" : sendFromSource.iron,
-                        // Theoretisch könnte hier auch "h" und andere Parameter sein, aber "map_send" ist oft einfacher.
-                        // Das "h" (csrf_token) wird in der Regel automatisch von TribalWars.post hinzugefügt
-                        // oder ist für "map_send" nicht explizit in den form_data nötig, da es in den options ist.
                     }, function(response) {
-                        if (response.success) {
+                        // Korrigierte Erfolgsprüfung: Prüfen auf response.success ODER eine Erfolgsmeldung im Text
+                        const isSuccess = response.success === true || (typeof response.message === 'string' && response.message.includes('Rohstoffe erfolgreich verschickt'));
+
+                        if (isSuccess) {
                             let transferredWood = response.resources ? (response.resources.wood || 0) : sendFromSource.wood;
                             let transferredStone = response.resources ? (response.resources.stone || 0) : sendFromSource.stone;
                             let transferredIron = response.resources ? (response.resources.iron || 0) : sendFromSource.iron;
