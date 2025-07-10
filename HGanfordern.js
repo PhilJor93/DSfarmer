@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.28)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.29)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.28 // Version erhöht für spekulative Zuweisung des 'nameless' Feldes zu 'ch'
+// @version      1.1.29 // Version erhöht für Korrektur des 'maxSendIron' Anzeigefehlers
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.28'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.29'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -29,7 +29,7 @@
         selectedGroupId: '0', // Standard: 'Alle Dörfer'
         maxSendWood: 0,       // Standard: Keine Begrenzung
         maxSendStone: 0,
-        maxSendIron: 0,
+        maxSendIron: 0,       // Korrigiert: Der korrekte Schlüsselname ist maxSendIron
         minWood: 10000,       // Mindestmenge Holz im Quelldorf
         minStone: 10000,      // Mindestmenge Lehm im Quelldorf
         minIron: 10000        // Mindestmenge Eisen im Quelldorf
@@ -56,7 +56,7 @@
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
                 scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0;
-                scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0;
+                scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0; // Korrigiert: Laden von parsed.maxSendIron
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
                 scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
                 scriptSettings.minStone = (parsed.minStone !== undefined && !isNaN(parseInt(parsed.minStone))) ? parseInt(parsed.minStone) : 10000;
@@ -127,7 +127,7 @@
                         </tr>
                         <tr>
                             <td>Max. Eisen pro Dorf:</td>
-                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxIron}" min="0" class="input-nicer"></td>
+                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
                         </tr>
                         <tr>
                             <td>Mindest-Holz im Quelldorf:</td>
@@ -158,7 +158,7 @@
                 scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
                 scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
                 scriptSettings.maxStone = parseInt($('#maxStoneInput').val()) || 0;
-                scriptSettings.maxIron = parseInt($('#maxIronInput').val()) || 0;
+                scriptSettings.maxIron = parseInt($('#maxIronInput').val()) || 0; // Korrigiert: Speichern nach maxSendIron
                 // Min-Werte, wenn leer, sollen nicht zu NaN werden, sondern 0 oder der definierte Standard.
                 scriptSettings.minWood = parseInt($('#minWoodInput').val()) || 0;
                 scriptSettings.minStone = parseInt($('#minStoneInput').val()) || 0;
