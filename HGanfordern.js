@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.23)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.24)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.23 // Version erhöht für Korrektur der fehlenden Ziel-Dorf-Parameter
+// @version      1.1.24 // Version erhöht für erweiterte Debug-Details der hidden inputs
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.23'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.24'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -349,11 +349,10 @@
                                 // console.log("Schritt 1 erfolgreich, Bestätigungsdialog erhalten:", response1);
 
                                 // HTML-Dialog parsen und Formulardaten extrahieren
-                                // Wickle den HTML-Code in ein temporäres div, um sicherzustellen, dass .find() korrekt funktioniert
                                 const $dialogContent = $('<div>').html(response1.dialog);
                                 const $form = $dialogContent.find('form[name="market"]');
 
-                                if ($form.length === 0) { // Überprüfe, ob das Formular tatsächlich gefunden wurde
+                                if ($form.length === 0) {
                                     alert(`FEHLER (Schritt 1 Parsing): Formular mit Namen "market" im Dialog nicht gefunden für ${source.name}.`);
                                     reject();
                                     return;
@@ -368,47 +367,47 @@
                                 }
 
                                 const postData = {};
+                                const rawHiddenInputs = []; // NEU: Array zum Speichern der Rohdaten versteckter Inputs
+
                                 $form.find('input[type="hidden"]').each(function() {
-                                    postData[$(this).attr('name')] = $(this).val();
+                                    const name = $(this).attr('name');
+                                    const value = $(this).val();
+                                    rawHiddenInputs.push({ name: name || null, value: value }); // Speichere auch Inputs ohne Namen
+                                    if (name) {
+                                        postData[name] = value;
+                                    } else {
+                                        // Wenn Name undefiniert/leer ist, versuchen wir, den Wert als Schlüssel zu verwenden.
+                                        // Dies ist hauptsächlich für Debugging-Zwecke, um diese Felder zu sehen.
+                                        // Der Server wird dies wahrscheinlich nicht interpretieren können,
+                                        // aber wir stellen sicher, dass die kritischen Felder unten explizit gesetzt werden.
+                                        postData[value] = value; 
+                                    }
                                 });
 
-                                // Die im Formular vorgeschlagenen Mengen sind möglicherweise nicht die, die wir senden wollten.
-                                // Wir überschreiben sie hier mit unseren ursprünglich berechneten Werten.
+                                // Die im Formular vorgeschlagenen Mengen überschreiben wir mit unseren Werten.
                                 postData['wood'] = sendFromSource.wood;
                                 postData['stone'] = sendFromSource.stone;
                                 postData['iron'] = sendFromSource.iron;
                                 
-                                // Der "Absenden"-Button im Bestätigungsformular hat oft den Namen "confirm" oder "submit"
-                                // Wir müssen sicherstellen, dass dieser Parameter gesendet wird.
-                                postData['confirm'] = '1'; // Standardname für den Bestätigungsbutton
+                                // Bestätigungsbutton
+                                postData['confirm'] = '1';
 
-                                // Überprüfen ob der Hash bereits in den POST-Daten ist, ansonsten hinzufügen
-                                if (!postData['h']) {
-                                    const hashMatch = formAction.match(/h=([a-f0-9]+)/); // Dies findet 'h' nicht, wenn es nur in den versteckten Feldern ist
-                                    if (hashMatch) {
-                                        postData['h'] = hashMatch[1];
-                                    } else {
-                                        postData['h'] = game_data.csrf; // Fallback auf den globalen CSRF-Token
-                                    }
-                                }
-
-                                // --- NEUE KRITISCHE KORREKTUREN: Explizites Setzen von Ziel-Dorf-ID und Koordinaten ---
-                                // Diese sind oft in Hidden-Feldern enthalten, aber können fehlen oder einen 'undefined'-Namen haben.
-                                // Indem wir sie explizit setzen, stellen wir sicher, dass sie korrekt übermittelt werden.
+                                // NEUE KRITISCHE KORREKTUREN: Explizites Setzen von Ziel-Dorf-ID und Koordinaten
+                                // Diese werden immer gesetzt, um sicherzustellen, dass sie korrekt übermittelt werden.
                                 postData['target_village'] = game_data.village.id; // Die ID des aktuellen Dorfes (Ziel)
                                 postData['x'] = game_data.village.x; // X-Koordinate des Ziel-Dorfes
                                 postData['y'] = game_data.village.y; // Y-Koordinate des Ziel-Dorfes
-                                // --- ENDE NEUE KRITISCHE KORREKTUREN ---
+
+                                // Stelle sicher, dass der CSRF-Token (h) immer der aktuellste ist
+                                postData['h'] = game_data.csrf; 
                                 
-                                // --- Start Korrektur: Direkter $.post() Aufruf für Schritt 2 ---
                                 const fullPostUrl = window.location.origin + formAction;
 
-                                // NEUER DEBUG ALERT: Zeigt die POST-Details für Schritt 2
-                                alert(`DEBUG: Schritt 2 POST-Details für ${source.name}\n\nURL: ${fullPostUrl}\n\nPOST Data: ${JSON.stringify(postData, null, 2)}`);
+                                // ERWEITERTER DEBUG ALERT: Zeigt nun Raw Hidden Inputs und Final POST Data
+                                alert(`DEBUG: Schritt 2 POST-Details für ${source.name}\n\nURL: ${fullPostUrl}\n\nRaw Hidden Inputs (from form):\n${JSON.stringify(rawHiddenInputs, null, 2)}\n\nFinal POST Data (after script mods):\n${JSON.stringify(postData, null, 2)}`);
 
                                 $.post(fullPostUrl, postData)
                                     .done(function(response2) {
-                                        // console.log(`Raw Server-Antwort (Schritt 2 - $.post):`, response2);
                                         let successDetected = false;
                                         let successMessage = '';
                                         let errorMessage = '';
@@ -418,27 +417,23 @@
                                         let coordsIncludes = false;
                                         const expectedCoordsInTitle = `${source.x}|${source.y}`;
                                         
-                                        // NEUE KORREKTUR: expectedNameInTitle bereinigen
-                                        // Sucht nach "Dorfname (X|Y)" und ignoriert optional " KXX" danach
                                         const nameCoordsMatch = source.name.match(/(.+ \(\d+\|\d+\))(?: K\d+)?/);
-                                        const cleanedExpectedName = nameCoordsMatch ? nameCoordsMatch[1].trim() : source.name; // Fallback
+                                        const cleanedExpectedName = nameCoordsMatch ? nameCoordsMatch[1].trim() : source.name;
 
                                         if (typeof response2 === 'string') {
                                             const $responseHtml = $('<div>').html(response2);
                                             const titleElement = $responseHtml.find('title');
                                             if (titleElement.length > 0) {
                                                 responseTitle = titleElement.text().trim();
-                                                nameIncludes = responseTitle.includes(cleanedExpectedName); // Verwende bereinigten Namen
+                                                nameIncludes = responseTitle.includes(cleanedExpectedName);
                                                 coordsIncludes = responseTitle.includes(expectedCoordsInTitle);
                                             }
 
-                                            // **Verbesserte Erfolgsprüfung für HTML-Antworten:**
-                                            // Prüfen, ob der Titel der Antwortseite den Namen und die Koordinaten des Quelldorfes enthält.
+                                            // Verbessertes Success-Checking
                                             if (nameIncludes && coordsIncludes) {
                                                 successDetected = true;
                                                 successMessage = 'Ressourcen erfolgreich verschickt (Server-Antwort ist die Dorf-Übersichtsseite des Quelldorfes).';
                                             }
-                                            // Bestandsprüfung für alte Erfolgsmeldungen (falls sie doch vorkommen)
                                             else if (response2.includes('UI.SuccessMessage(') || response2.includes('Du hast deine Rohstoffe erfolgreich verschickt') || response2.includes('Rohstoffe versendet')) {
                                                 successDetected = true;
                                                 successMessage = 'Ressourcen erfolgreich verschickt (Textanalyse in HTML).';
@@ -448,7 +443,6 @@
                                                 errorMessage = 'Unklare Serverantwort (HTML).';
                                             }
                                         } else if (response2 && typeof response2 === 'object') {
-                                            // Prüfung für JSON-Antworten (weniger wahrscheinlich für diesen Schritt)
                                             if (response2.success) {
                                                 successDetected = true;
                                                 successMessage = 'Ressourcen erfolgreich verschickt (JSON-Analyse).';
@@ -489,9 +483,8 @@
                                         alert(`FEHLER (Netzwerk Schritt 2 - $.post): Anfrage von ${source.name}. Status: ${textStatus2 || 'unbekannt'}, Fehler: ${errorThrown2 || 'unbekannt'}.`);
                                         reject();
                                     });
-                                // --- Ende Korrektur: Direkter $.post() Aufruf ---
 
-                            } else if (response1.success) { // Fallback, falls der erste Request direkt erfolgreich ist ohne Dialog (unwahrscheinlich für Market Send)
+                            } else if (response1.success) {
                                 let transferredWood = response1.resources ? (response1.resources.wood || 0) : sendFromSource.wood;
                                 let transferredStone = response1.resources ? (response1.resources.stone || 0) : sendFromSource.stone;
                                 let transferredIron = response1.resources ? (response1.resources.iron || 0) : sendFromSource.iron;
@@ -527,7 +520,6 @@
                     });
                 }));
             } else if (sendFromSource.wood > 0 || sendFromSource.stone > 0 || sendFromSource.iron > 0) {
-                // Wenn nichts gesendet werden konnte (z.B. nicht genug Händler), füge einen leeren Promise hinzu, damit allSettled nicht blockiert
                 promises.push(Promise.resolve());
             }
         });
@@ -556,7 +548,7 @@
 
                     debugOutput += `Dorf: ${originalSource.name} (${originalSource.id}) [Entf: ${originalSource.distance}]:\n`;
                     debugOutput += `  Gesendet: H: ${originalSource.wood - updatedSource.wood}, L: ${originalSource.stone - updatedSource.stone}, E: ${originalSource.iron - updatedSource.iron} (Benötigte Händler: ${originalSource.merchants - updatedSource.merchants})\n`;
-    debugOutput += `  Verbleibend: H: ${updatedSource.wood}, L: ${updatedSource.stone}, E: ${updatedSource.iron} | Händler: ${updatedSource.merchants}\n\n`;
+                    debugOutput += `  Verbleibend: H: ${updatedSource.wood}, L: ${updatedSource.stone}, E: ${updatedSource.iron} | Händler: ${updatedSource.merchants}\n\n`;
                 }
             }
 
