@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.24)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.25)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.24 // Version erhöht für erweiterte Debug-Details der hidden inputs
+// @version      1.1.25 // Version erhöht für Korrektur des 'target' Parameters im ersten POST
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.24'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.25'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -336,8 +336,8 @@
                         ajax: 'send',              // Die Aktion zum Senden
                         village: source.id,        // Die ID des sendenden Dorfes
                         h: game_data.csrf          // Der Sicherheits-Hash
-                    }, {
-                        'target_village': game_data.village.id, // Die ID des Ziel-Dorfes
+                    }, { // <<< Diese Parameter gehen mit dem ersten POST zur Server-Initialisierung
+                        'target': game_data.village.id, // <--- HIER KORRIGIERT: 'target' statt 'target_village'
                         'wood': sendFromSource.wood,
                         'stone': sendFromSource.stone,
                         'iron': sendFromSource.iron,
@@ -368,19 +368,22 @@
 
                                 const postData = {};
                                 const rawHiddenInputs = []; // NEU: Array zum Speichern der Rohdaten versteckter Inputs
+                                let targetFieldName = 'target_village'; // Standardname für das Ziel-Feld im finalen POST
 
                                 $form.find('input[type="hidden"]').each(function() {
                                     const name = $(this).attr('name');
                                     const value = $(this).val();
                                     rawHiddenInputs.push({ name: name || null, value: value }); // Speichere auch Inputs ohne Namen
+
                                     if (name) {
                                         postData[name] = value;
+                                        // Prüfen, ob das Inputfeld 'target' heißt, um den Namen für die explizite Zuweisung zu übernehmen
+                                        if (name === 'target') {
+                                            targetFieldName = 'target';
+                                        }
                                     } else {
-                                        // Wenn Name undefiniert/leer ist, versuchen wir, den Wert als Schlüssel zu verwenden.
-                                        // Dies ist hauptsächlich für Debugging-Zwecke, um diese Felder zu sehen.
-                                        // Der Server wird dies wahrscheinlich nicht interpretieren können,
-                                        // aber wir stellen sicher, dass die kritischen Felder unten explizit gesetzt werden.
-                                        postData[value] = value; 
+                                        // Für Debugging: unbekannte Felder erfassen. Werden später explizit überschrieben/gesetzt
+                                        postData[value] = value;
                                     }
                                 });
 
@@ -392,15 +395,16 @@
                                 // Bestätigungsbutton
                                 postData['confirm'] = '1';
 
-                                // NEUE KRITISCHE KORREKTUREN: Explizites Setzen von Ziel-Dorf-ID und Koordinaten
-                                // Diese werden immer gesetzt, um sicherzustellen, dass sie korrekt übermittelt werden.
-                                postData['target_village'] = game_data.village.id; // Die ID des aktuellen Dorfes (Ziel)
-                                postData['x'] = game_data.village.x; // X-Koordinate des Ziel-Dorfes
-                                postData['y'] = game_data.village.y; // Y-Koordinate des Ziel-Dorfes
-
                                 // Stelle sicher, dass der CSRF-Token (h) immer der aktuellste ist
                                 postData['h'] = game_data.csrf; 
                                 
+                                // Explizites Setzen der Ziel-Dorf-ID unter dem korrekten Namen ('target' oder 'target_village')
+                                postData[targetFieldName] = game_data.village.id;
+
+                                // Explizites Setzen der X- und Y-Koordinaten des Ziel-Dorfes
+                                postData['x'] = game_data.village.x; 
+                                postData['y'] = game_data.village.y;
+
                                 const fullPostUrl = window.location.origin + formAction;
 
                                 // ERWEITERTER DEBUG ALERT: Zeigt nun Raw Hidden Inputs und Final POST Data
