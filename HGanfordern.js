@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.22)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.23)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.22 // Version erhöht für POST-Details im Alert
+// @version      1.1.23 // Version erhöht für Korrektur der fehlenden Ziel-Dorf-Parameter
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.22'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.23'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -157,8 +157,8 @@
             $('#saveSettingsBtn').on('click', function() {
                 scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
                 scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
-                scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
-                scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
+                scriptSettings.maxStone = parseInt($('#maxStoneInput').val()) || 0;
+                scriptSettings.maxIron = parseInt($('#maxIronInput').val()) || 0;
                 // Min-Werte, wenn leer, sollen nicht zu NaN werden, sondern 0 oder der definierte Standard.
                 scriptSettings.minWood = parseInt($('#minWoodInput').val()) || 0;
                 scriptSettings.minStone = parseInt($('#minStoneInput').val()) || 0;
@@ -391,6 +391,14 @@
                                         postData['h'] = game_data.csrf; // Fallback auf den globalen CSRF-Token
                                     }
                                 }
+
+                                // --- NEUE KRITISCHE KORREKTUREN: Explizites Setzen von Ziel-Dorf-ID und Koordinaten ---
+                                // Diese sind oft in Hidden-Feldern enthalten, aber können fehlen oder einen 'undefined'-Namen haben.
+                                // Indem wir sie explizit setzen, stellen wir sicher, dass sie korrekt übermittelt werden.
+                                postData['target_village'] = game_data.village.id; // Die ID des aktuellen Dorfes (Ziel)
+                                postData['x'] = game_data.village.x; // X-Koordinate des Ziel-Dorfes
+                                postData['y'] = game_data.village.y; // Y-Koordinate des Ziel-Dorfes
+                                // --- ENDE NEUE KRITISCHE KORREKTUREN ---
                                 
                                 // --- Start Korrektur: Direkter $.post() Aufruf für Schritt 2 ---
                                 const fullPostUrl = window.location.origin + formAction;
