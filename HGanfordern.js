@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.20)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.21)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.20 // Version erhöht für Debug-Informationen in Alerts
+// @version      1.1.21 // Version erhöht für Korrektur der Namenserkennung (Kxx)
 // @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
 // @author       DeinName (Anpassbar)
 // @match        https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.20'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.1.21'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -406,14 +406,18 @@
                                         let nameIncludes = false;
                                         let coordsIncludes = false;
                                         const expectedCoordsInTitle = `${source.x}|${source.y}`;
-                                        const expectedNameInTitle = source.name;
+                                        
+                                        // NEUE KORREKTUR: expectedNameInTitle bereinigen
+                                        // Sucht nach "Dorfname (X|Y)" und ignoriert optional " KXX" danach
+                                        const nameCoordsMatch = source.name.match(/(.+ \(\d+\|\d+\))(?: K\d+)?/);
+                                        const cleanedExpectedName = nameCoordsMatch ? nameCoordsMatch[1].trim() : source.name; // Fallback
 
                                         if (typeof response2 === 'string') {
                                             const $responseHtml = $('<div>').html(response2);
                                             const titleElement = $responseHtml.find('title');
                                             if (titleElement.length > 0) {
                                                 responseTitle = titleElement.text().trim();
-                                                nameIncludes = responseTitle.includes(expectedNameInTitle);
+                                                nameIncludes = responseTitle.includes(cleanedExpectedName); // Verwende bereinigten Namen
                                                 coordsIncludes = responseTitle.includes(expectedCoordsInTitle);
                                             }
 
@@ -451,7 +455,7 @@
                                             let transferredStone = sendFromSource.stone;
                                             let transferredIron = sendFromSource.iron;
 
-                                            alert(`ENDGÜLTIGER ERFOLG (via $.post): Anfrage von ${source.name}.\nGesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}.\nDetails: ${successMessage}.\n\n--- Debug Info ---\nAntworttitel: "${responseTitle}"\nErwarteter Name: "${expectedNameInTitle}" (Match: ${nameIncludes})\nErwartete Koordinaten: "${expectedCoordsInTitle}" (Match: ${coordsIncludes})\nRaw Response (verkürzt): ${response2.substring(0, 200)}...`);
+                                            alert(`ENDGÜLTIGER ERFOLG (via $.post): Anfrage von ${source.name}.\nGesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}.\nDetails: ${successMessage}.\n\n--- Debug Info ---\nAntworttitel: "${responseTitle}"\nErwarteter Name (bereinigt): "${cleanedExpectedName}" (Match: ${nameIncludes})\nErwartete Koordinaten: "${expectedCoordsInTitle}" (Match: ${coordsIncludes})\nRaw Response (verkürzt): ${response2.substring(0, 200)}...`);
 
                                             totalSentPotential.wood += transferredWood;
                                             totalSentPotential.stone += transferredStone;
@@ -465,7 +469,7 @@
                                             };
                                             resolve();
                                         } else {
-                                            alert(`FEHLER (Endgültiger Versand via $.post): Anfrage von ${source.name} fehlgeschlagen.\nDetails: ${errorMessage}.\n\n--- Debug Info ---\nAntworttitel: "${responseTitle}"\nErwarteter Name: "${expectedNameInTitle}" (Match: ${nameIncludes})\nErwartete Koordinaten: "${expectedCoordsInTitle}" (Match: ${coordsIncludes})\nRaw Response (verkürzt): ${response2.substring(0, 200)}...`);
+                                            alert(`FEHLER (Endgültiger Versand via $.post): Anfrage von ${source.name} fehlgeschlagen.\nDetails: ${errorMessage}.\n\n--- Debug Info ---\nAntworttitel: "${responseTitle}"\nErwarteter Name (bereinigt): "${cleanedExpectedName}" (Match: ${nameIncludes})\nErwartete Koordinaten: "${expectedCoordsInTitle}" (Match: ${coordsIncludes})\nRaw Response (verkürzt): ${response2.substring(0, 200)}...`);
                                             reject();
                                         }
                                     })
