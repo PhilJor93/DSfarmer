@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - DEBUG MODE (Produktiv - V.1.1.31)
+// @name         Tribal Wars Smart Resource Request (Anfrage Helfer) - PRODUKTIV MODE (V.1.2)
 // @namespace    http://tampermonkey.net/
-// @version      1.1.31 // Version erhöht für Korrektur der Erfolgsmeldung beim Versand
-// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. (Zeigt NUR finalen Alert und sendet Ressourcen!)
-// @author       DeinName (Anpassbar)
+// @version      1.2 // Debug-Alerts entfernt
+// @description  Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände.
+// @author       PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match        https://*.tribalwars.*/game.php*
 // @grant        none
 // ==/UserScript==
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.1.31'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.2'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -258,7 +258,6 @@
         };
 
         if (needed.wood <= 0 && needed.stone <= 0 && needed.iron <= 0) {
-            alert('Alle benötigten Ressourcen bereits vorhanden (oder unterwegs)!');
             UI.InfoMessage('Alle benötigten Ressourcen bereits vorhanden (oder unterwegs)!', 2000);
             $(`td[id='request${buildingNr}']`).remove(); // Button entfernen, wenn Ressourcen gedeckt
             return;
@@ -266,7 +265,6 @@
 
         // Prüfung auf Lagerplatz im Zieldorf (einschließlich bereits angeforderter Ressourcen)
         if (currentTheoreticalWood + needed.wood > WHCap || currentTheoreticalStone + needed.stone > WHCap || currentTheoreticalIron + needed.iron > WHCap) {
-            alert("Nicht genug Lagerplatz im Ziel-Dorf für diese Menge an Ressourcen (bereits angeforderte Ressourcen berücksichtigt)!");
             UI.ErrorMessage("Nicht genug Lagerplatz im Ziel-Dorf für diese Menge an Ressourcen (bereits angeforderte Ressourcen berücksichtigt)!", 4000);
             return;
         }
@@ -331,8 +329,6 @@
 
             if ((sendFromSource.wood > 0 || sendFromSource.stone > 0 || sendFromSource.iron > 0) && merchantsNeededForThisTransfer <= source.merchants) {
                 promises.push(new Promise((resolve, reject) => {
-                    // NEUER EINZELSCHRITT-VERSAND mit ajaxaction: "map_send"
-                    // Basierend auf dem vom Nutzer bereitgestellten Code-Snippet
                     TribalWars.post("market", {
                         "ajaxaction" : "map_send", // Die Aktion für den direkten Versand
                         "village" : source.id      // Die ID des sendenden Dorfes
@@ -350,8 +346,8 @@
                             let transferredStone = response.resources ? (response.resources.stone || 0) : sendFromSource.stone;
                             let transferredIron = response.resources ? (response.resources.iron || 0) : sendFromSource.iron;
 
-                            alert(`ERFOLG (Direkter Versand): Ressourcen von ${source.name} an ${game_data.village.name} gesendet.\nGesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}.\nNachricht: ${response.message || 'Erfolgreich.'}`);
-                            console.log(`Direkter Versand erfolgreich von ${source.name} an ${game_data.village.name}. Antwort:`, response);
+                            UI.SuccessMessage(`Ressourcen von ${source.name} gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}`, 3000);
+                            console.log(`Ressourcen erfolgreich gesendet von ${source.name} an ${game_data.village.name}. Antwort:`, response);
 
                             totalSentPotential.wood += transferredWood;
                             totalSentPotential.stone += transferredStone;
@@ -365,17 +361,20 @@
                             };
                             resolve();
                         } else {
-                            alert(`FEHLER (Direkter Versand): Anfrage von ${source.name} fehlgeschlagen.\nNachricht: ${response.message || 'Unbekannter Fehler'}. Server-Antwort: ${JSON.stringify(response)}`);
-                            console.error(`Direkter Versand fehlgeschlagen von ${source.name}. Antwort:`, response);
+                            UI.ErrorMessage(`Fehler beim Senden von Ressourcen von ${source.name}: ${response.message || 'Unbekannter Fehler'}`, 5000);
+                            console.error(`Fehler beim Senden von Ressourcen von ${source.name}. Antwort:`, response);
                             reject();
                         }
                     }, function(jqXHR, textStatus, errorThrown) {
-                        alert(`NETZWERKFEHLER (Direkter Versand): Anfrage von ${source.name}.\nStatus: ${textStatus || 'unbekannt'}, Fehler: ${errorThrown || 'unbekannt'}.`);
-                        console.error(`Netzwerkfehler beim direkten Versand von ${source.name}. Status:`, textStatus, 'Fehler:', errorThrown, 'jqXHR:', jqXHR);
+                        UI.ErrorMessage(`Netzwerkfehler beim Senden von ${source.name}: ${textStatus || 'unbekannt'}`, 5000);
+                        console.error(`Netzwerkfehler beim Senden von ${source.name}. Status:`, textStatus, 'Fehler:', errorThrown, 'jqXHR:', jqXHR);
                         reject();
                     });
                 }));
             } else if (sendFromSource.wood > 0 || sendFromSource.stone > 0 || sendFromSource.iron > 0) {
+                // Wenn Ressourcen nötig sind, aber nicht gesendet werden können (z.B. keine Händler),
+                // soll die Promise trotzdem aufgelöst werden, um den Prozess nicht zu blockieren.
+                // Es wird jedoch nichts tatsächlich gesendet und die 'totalSentPotential' bleibt unberührt.
                 promises.push(Promise.resolve());
             }
         });
@@ -387,41 +386,27 @@
             currentTheoreticalStone += totalSentPotential.stone;
             currentTheoreticalIron += totalSentPotential.iron;
 
-            // Bereite die Debug-Ausgabe vor
-            let debugOutput = `Ressourcen wurden angefordert (falls möglich).\n\n`;
-            debugOutput += `Fehlende Ressourcen für Gebäude (vor Anfrage):\nHolz: ${needed.wood}\nLehm: ${needed.stone}\nEisen: ${needed.iron}\n\n`;
-            debugOutput += `Ausgewählte Anforderungs-Gruppe (ID): ${scriptSettings.selectedGroupId}\n`;
-            debugOutput += `Max. Sende-Mengen pro Quelldorf (0 = unbegrenzt):\nHolz: ${scriptSettings.maxSendWood}\nLehm: ${scriptSettings.maxSendStone}\nEisen: ${scriptSettings.maxSendIron}\n`;
-            debugOutput += `Mindest-Verbleib im Quelldorf:\nHolz: ${scriptSettings.minWood}\nLehm: ${scriptSettings.minStone}\nEisen: ${scriptSettings.minIron}\n\n`;
-
-            if (Object.keys(sourcesToUpdate).length === 0 && (needed.wood > 0 || needed.stone > 0 || needed.iron > 0)) {
-                debugOutput += "Es konnten keine Ressourcen von den verfügbaren Quelldörfern zugewiesen werden (innerhalb der ausgewählten Gruppe und Einstellungen).\n\n";
-            } else {
-                debugOutput += `Ressourcen gesendet von folgenden Dörfern (Ist-Zustand nach dem Senden):\n\n`;
-                for (const sourceId in sourcesToUpdate) {
-                    const originalSource = sources.find(s => s.id == sourceId); // Finde Originaldaten
-                    const updatedSource = sourcesToUpdate[sourceId]; // Finde die neuen, theoretischen Restdaten
-
-                    debugOutput += `Dorf: ${originalSource.name} (${originalSource.id}) [Entf: ${originalSource.distance}]:\n`;
-                    debugOutput += `  Gesendet: H: ${originalSource.wood - updatedSource.wood}, L: ${originalSource.stone - updatedSource.stone}, E: ${originalSource.iron - updatedSource.iron} (Benötigte Händler: ${originalSource.merchants - updatedSource.merchants})\n`;
-                    debugOutput += `  Verbleibend: H: ${updatedSource.wood}, L: ${updatedSource.stone}, E: ${updatedSource.iron} | Händler: ${updatedSource.merchants}\n\n`;
-                }
+            // Anzeigen einer Zusammenfassung nach allen Versuchen
+            let summaryMessage = `Anforderungsprozess abgeschlossen.\n\n`;
+            if (Object.keys(sourcesToUpdate).length > 0) {
+                summaryMessage += `Gesendet in diesem Zyklus:\nHolz: ${totalSentPotential.wood}\nLehm: ${totalSentPotential.stone}\nEisen: ${totalSentPotential.iron}\n\n`;
+            } else if (needed.wood > 0 || needed.stone > 0 || needed.iron > 0) {
+                 summaryMessage += "Es konnten keine Ressourcen zugewiesen werden (innerhalb der ausgewählten Gruppe und Einstellungen).\n\n";
             }
 
-            debugOutput += `Gesamte Ressourcen, die in diesem Zyklus gesendet wurden:\n`;
-            debugOutput += `Holz: ${totalSentPotential.wood}\n`;
-            debugOutput += `Lehm: ${totalSentPotential.stone}\n`;
-            debugOutput += `Eisen: ${totalSentPotential.iron}\n\n`;
+            const finalRemainingWood = Math.max(0, needed.wood - totalSentPotential.wood);
+            const finalRemainingStone = Math.max(0, needed.stone - totalSentPotential.stone);
+            const finalRemainingIron = Math.max(0, needed.iron - totalSentPotential.iron);
 
-            debugOutput += `Verbleibender Gesamtbedarf nach dieser Aktion:\n`;
-            debugOutput += `Holz: ${Math.max(0, needed.wood - totalSentPotential.wood)}\n`;
-            debugOutput += `Lehm: ${Math.max(0, needed.stone - totalSentPotential.stone)}\n`;
-            debugOutput += `Eisen: ${Math.max(0, needed.iron - totalSentPotential.iron)}\n\n`;
-
-            // Dies ist der finale Alert, der die Zusammenfassung anzeigt.
-            // Der Detail-Alert für den Versand ist direkt im .done() Callback für jede einzelne Anfrage.
-            // alert(debugOutput); 
-
+            if (finalRemainingWood > 0 || finalRemainingStone > 0 || finalRemainingIron > 0) {
+                summaryMessage += `Verbleibender Gesamtbedarf für dieses Gebäude:\nHolz: ${finalRemainingWood}\nLehm: ${finalRemainingStone}\nEisen: ${finalRemainingIron}\n`;
+                UI.ErrorMessage(summaryMessage, 8000); // Längere Anzeige für ungedeckten Bedarf
+            } else {
+                summaryMessage += `Alle benötigten Ressourcen für dieses Gebäude gedeckt!`;
+                UI.SuccessMessage(summaryMessage, 5000); // Standard-Anzeige für Erfolg
+            }
+            console.log("Ressourcenanforderung Zusammenfassung:", summaryMessage);
+            
             // Aktualisiere das ursprüngliche 'sources'-Array global für nachfolgende Anforderungen
             for (const sourceId in sourcesToUpdate) {
                 const originalSource = sources.find(s => s.id == sourceId);
