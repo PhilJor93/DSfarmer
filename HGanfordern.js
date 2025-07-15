@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.7)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.8)
 // @namespace     http://tampermonkey.net/
-// @version       2.7 // Fix: Verbesserter Transport-Parsing
+// @version       2.8 // Fix: Korrigiertes maxSendStone Parsing
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.7' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.8' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -86,7 +86,8 @@
                 // Parsed-Werte sicher in scriptSettings übernehmen, mit Fallback auf Standardwerte
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
-                scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0; // Legacy support for old saved variable name
+                // KORREKTUR HIER: maxSendStone
+                scriptSettings.maxSendStone = (parsed.maxSendStone !== undefined && !isNaN(parseInt(parsed.maxSendStone))) ? parseInt(parsed.maxSendStone) : (parseInt(parsed.maxStone) || 0);
                 scriptSettings.maxSendIron = (parsed.maxSendIron !== undefined && !isNaN(parseInt(parsed.maxSendIron))) ? parseInt(parsed.maxSendIron) : (parseInt(parsed.maxIron) || 0);
 
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
