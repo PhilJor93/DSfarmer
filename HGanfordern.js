@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.1.9)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.0)
 // @namespace     http://tampermonkey.net/
-// @version       1.9 // Feature: Debug-Modus zeigt Restbestände im Quelldorf
+// @version       2.0 // Fix: Echte gleichzeitige Anforderung pro Dorf
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '1.9' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.0' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -327,7 +327,7 @@
         // Sortiere Quellen nach Entfernung (näher ist besser)
         availableSources.sort((a, b) => a.distance - b.distance);
 
-        // NEUE LOGIK: Iteriere durch die Quelldörfer und sende mehrere Rohstoffe gleichzeitig
+        // Die Hauptschleife: Iteriere durch die Quelldörfer und versuche, von jedem Dorf mehrere Ressourcen gleichzeitig zu senden
         for (let i = 0; i < availableSources.length; i++) {
             let source = availableSources[i];
 
@@ -344,72 +344,66 @@
             }
 
             let payload = { wood: 0, stone: 0, iron: 0 };
-            let merchantsNeededForSource = 0;
+            let merchantsNeededForPayload = 0; // Händler für die aktuelle payload dieses Dorfes
             const resourceTypes = ['wood', 'stone', 'iron'];
-            let calculatedSendAmounts = {}; // Temporäre Speicherung der berechneten Mengen pro Ressource
+            let potentialSendAmounts = {}; // Temporäre Speicherung der berechneten Mengen pro Ressource
 
-            // 1. Phase: Berechne, wie viel von jeder Ressource gesendet werden KÖNNTE (ohne Händlerlimit)
+            // 1. Phase: Berechne, wie viel von jeder Ressource dieses Dorf potenziell senden KÖNNTE,
+            // unter Berücksichtigung des Bedarfs, der Mindestbestände und der Max-Send-Einstellungen.
             for (const resType of resourceTypes) {
-                if (currentNeeded[resType] <= 0) {
-                    calculatedSendAmounts[resType] = 0;
-                    continue;
-                }
-
                 let sendAmountForRes = 0;
-                let availableToSendFromSource = source[resType] - scriptSettings[`min${resType.charAt(0).toUpperCase() + resType.slice(1)}`];
-                if (availableToSendFromSource < 0) availableToSendFromSource = 0;
+                if (currentNeeded[resType] > 0) {
+                    let availableFromSource = source[resType] - scriptSettings[`min${resType.charAt(0).toUpperCase() + resType.slice(1)}`];
+                    if (availableFromSource < 0) availableFromSource = 0;
 
-                if (availableToSendFromSource > 0) {
-                    sendAmountForRes = Math.min(currentNeeded[resType], availableToSendFromSource);
-
-                    const maxSendSetting = scriptSettings[`maxSend${resType.charAt(0).toUpperCase() + resType.slice(1)}`];
-                    if (maxSendSetting > 0) {
-                        sendAmountForRes = Math.min(sendAmountForRes, maxSendSetting);
-                    } else {
-                        // Wenn maxSendSetting = 0, begrenzt durch den gesamten verbleibenden Bedarf
-                        sendAmountForRes = Math.min(sendAmountForRes, currentNeeded[resType]);
+                    if (availableFromSource > 0) {
+                        sendAmountForRes = Math.min(currentNeeded[resType], availableFromSource);
+                        const maxSendSetting = scriptSettings[`maxSend${resType.charAt(0).toUpperCase() + resType.slice(1)}`];
+                        if (maxSendSetting > 0) {
+                            sendAmountForRes = Math.min(sendAmountForRes, maxSendSetting);
+                        }
                     }
                 }
-                calculatedSendAmounts[resType] = sendAmountForRes;
-                merchantsNeededForSource += Math.ceil(sendAmountForRes / 1000);
+                potentialSendAmounts[resType] = sendAmountForRes;
+                merchantsNeededForPayload += Math.ceil(sendAmountForRes / 1000);
             }
 
-            // 2. Phase: Passe die Sendemengen an das Händlerlimit des Dorfes an
-            if (merchantsNeededForSource > source.merchants && merchantsNeededForSource > 0) {
-                let reductionFactor = source.merchants / merchantsNeededForSource;
-                logDebug(`Dorf ${source.name} hat nicht genug Händler für alle gewünschten Ressourcen. Reduktionsfaktor: ${reductionFactor.toFixed(2)}. Verfügbare Händler: ${source.merchants}, Benötigt: ${merchantsNeededForSource}`);
+            // 2. Phase: Passe die Sendemengen an die verfügbaren Händler des Dorfes an.
+            // Wenn die Summe der benötigten Händler für alle Ressourcen die verfügbaren Händler übersteigt,
+            // reduziere die Sendemengen proportional.
+            if (merchantsNeededForPayload > source.merchants && merchantsNeededForPayload > 0) {
+                let reductionFactor = source.merchants / merchantsNeededForPayload;
+                logDebug(`Dorf ${source.name} hat nicht genug Händler für alle potenziellen Ressourcen. Reduktionsfaktor: ${reductionFactor.toFixed(2)}. Verfügbare Händler: ${source.merchants}, Potenziell benötigt: ${merchantsNeededForPayload}`);
 
-                merchantsNeededForSource = 0; // Setze zurück, um neu zu berechnen
+                merchantsNeededForPayload = 0; // Setze zurück, um die Händler für die *reduzierten* Mengen neu zu berechnen
                 for (const resType of resourceTypes) {
-                    let reducedAmount = Math.floor(calculatedSendAmounts[resType] * reductionFactor);
-                    // Sicherstellen, dass die Menge ein Vielfaches von 1000 ist (für Händler)
-                    reducedAmount = Math.floor(reducedAmount / 1000) * 1000;
+                    let reducedAmount = Math.floor(potentialSendAmounts[resType] * reductionFactor);
+                    reducedAmount = Math.floor(reducedAmount / 1000) * 1000; // Runde auf das nächste Tausender-Vielfache ab
                     payload[resType] = reducedAmount;
-                    merchantsNeededForSource += Math.ceil(payload[resType] / 1000);
+                    merchantsNeededForPayload += Math.ceil(payload[resType] / 1000);
                 }
-                // Nach der Reduktion, falls immer noch zu viele Händler benötigt werden (durch Rundung),
-                // oder wenn der Faktor 0 war und keine Händler übrig sind, setze auf 0
-                if (merchantsNeededForSource > source.merchants || source.merchants === 0) {
-                    payload = { wood: 0, stone: 0, iron: 0 };
-                    merchantsNeededForSource = 0;
-                    logDebug(`Nach Reduktion konnte Dorf ${source.name} keine sinnvollen Mengen senden. Überspringe.`);
-                    continue;
-                }
-            } else if (merchantsNeededForSource <= 0 && (calculatedSendAmounts.wood <=0 && calculatedSendAmounts.stone <=0 && calculatedSendAmounts.iron <=0)) {
-                // Wenn keine Ressourcen benötigt werden oder keine Händler benötigt werden (z.B. alles 0)
-                logDebug(`Dorf ${source.name} hat keinen Bedarf oder keine Händler nötig. Überspringe.`);
+                // Nach der Reduktion, falls durch Rundung immer noch zu viele Händler benötigt werden,
+                // oder wenn der Faktor 0 war und keine Händler übrig sind (was zu 0 führen sollte),
+                // stelle sicher, dass keine Lieferung stattfindet.
+                if (merchantsNeededForPayload > source.merchants || (merchantsNeededForPayload === 0 && (payload.wood > 0 || payload.stone > 0 || payload.iron > 0))) {
+                     logDebug(`Nach Reduktion kann Dorf ${source.name} keine sinnvollen Mengen senden oder es wären zu viele Händler nötig. Überspringe.`);
+                     payload = { wood: 0, stone: 0, iron: 0 }; // Setze alles auf 0
+                     merchantsNeededForPayload = 0;
+                     continue; // Gehe zum nächsten Dorf
+                 }
+            } else if (merchantsNeededForPayload === 0 && (potentialSendAmounts.wood === 0 && potentialSendAmounts.stone === 0 && potentialSendAmounts.iron === 0)) {
+                // Wenn von diesem Dorf generell nichts gesendet werden kann (kein Bedarf oder keine verfügbaren Ressourcen)
+                logDebug(`Dorf ${source.name} hat keinen Bedarf für seine Ressourcen oder kann nichts liefern. Überspringe.`);
                 continue;
             } else {
-                // Händler reichen aus, nutze die berechneten Mengen
-                for (const resType of resourceTypes) {
-                    payload[resType] = calculatedSendAmounts[resType];
-                }
+                // Händler reichen aus, nutze die direkt berechneten potenziellen Mengen
+                payload = { ...potentialSendAmounts };
             }
 
-
             // 3. Phase: Senden (simuliert oder tatsächlich)
+            // Nur fortfahren, wenn tatsächlich etwas gesendet werden soll
             if (payload.wood > 0 || payload.stone > 0 || payload.iron > 0) {
-                // Speichere die aktuellen Ressourcen des Quelldorfes VOR der simulierten Abzug,
+                // Speichere die aktuellen Ressourcen und Händler des Quelldorfes VOR der simulierten Abzug,
                 // um sie in der Log-Meldung anzuzeigen.
                 const initialSourceWood = source.wood;
                 const initialSourceStone = source.stone;
@@ -417,12 +411,13 @@
                 const initialSourceMerchants = source.merchants;
 
                 // Aktualisiere den lokalen Zustand des Quelldorfes FÜR DIE NÄCHSTEN SCHRITTE IN DIESER ANFORDERUNG
+                // Dies stellt sicher, dass nachfolgende Dörfer im selben Zyklus die korrigierten Zahlen sehen.
                 source.wood -= payload.wood;
                 source.stone -= payload.stone;
                 source.iron -= payload.iron;
-                source.merchants -= merchantsNeededForSource;
+                source.merchants -= merchantsNeededForPayload;
 
-                // Speichere die Updates für das globale 'sources'-Array
+                // Speichere die Updates für das globale 'sources'-Array, das später aktualisiert wird
                 sourcesToUpdate[source.id] = {
                     wood: source.wood,
                     stone: source.stone,
@@ -432,8 +427,8 @@
 
                 if (DEBUG_MODE) {
                     logDebug(
-                        `(SIMULIERT): Ressourcenanforderung von Dorf ${source.name} nach ${game_data.village.name} für Gebäude ${buildingNr}: ` +
-                        `H:${payload.wood} L:${payload.stone} E:${payload.iron}. Benötigt Händler: ${merchantsNeededForSource}. ` +
+                        `(SIMULIERT): Ressourcenanforderung von Dorf ${source.name} (${source.x}|${source.y}) nach ${game_data.village.name} für Gebäude ${buildingNr}: ` +
+                        `H:${payload.wood} L:${payload.stone} E:${payload.iron}. Benötigt Händler: ${merchantsNeededForPayload}. ` +
                         `Bestand vorher: H:${initialSourceWood} L:${initialSourceStone} E:${initialSourceIron}. ` +
                         `Bestand nachher: H:${source.wood} L:${source.stone} E:${source.iron}. ` +
                         `Händler vorher: ${initialSourceMerchants}. Händler nachher: ${source.merchants}.`
@@ -445,6 +440,7 @@
                     totalSentPotential.stone += payload.stone;
                     totalSentPotential.iron += payload.iron;
 
+                    // Aktualisiere den *verbleibenden Bedarf* basierend auf der aktuellen simulierten Lieferung
                     currentNeeded.wood = Math.max(0, currentNeeded.wood - payload.wood);
                     currentNeeded.stone = Math.max(0, currentNeeded.stone - payload.stone);
                     currentNeeded.iron = Math.max(0, currentNeeded.iron - payload.iron);
