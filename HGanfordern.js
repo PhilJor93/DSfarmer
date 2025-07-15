@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.25)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.26)
 // @namespace     http://tampermonkey.net/
-// @version       2.25 // Fix: Entspanntere Erfolgserkennung der Serverantwort bei Ressourcenversand.
+// @version       2.26 // Fix: Annahme erfolgreicher Sendung, es sei denn, es liegt ein Netzwerkfehler vor.
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     // Standardmäßig ist es false, wenn die Variable nicht gesetzt ist.
     const DEBUG_MODE = window.HGA_DEBUG === true;
 
-    const SCRIPT_VERSION = '2.25' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.26' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // Konfiguration für Wiederholungsversuche im Produktivmodus
     const MAX_RETRIES = 3; // Maximale Anzahl der Wiederholungsversuche pro Sendung
@@ -600,7 +600,7 @@
                         `(SIMULIERT): Ressourcenanforderung von Dorf ${source.name} (${source.x}|${source.y}) nach ${game_data.village.name} für Gebäude ${buildingNr}: ` +
                         `H:${payload.wood} L:${payload.stone} E:${payload.iron}. Benötigt Händler: ${merchantsNeededForPayload}. ` +
                         `Bestand vorher: H:${initialSourceWood} L:${initialSourceStone} E:${initialSourceIron}. ` +
-                        `Bestand nachher: H:${source.wood} L:${source.stone} E:${source.iron}. ` +
+                        `Bestand nachher: H:${source.wood} L:${source.stone} L:${source.iron}. ` +
                         `Händler vorher: ${initialSourceMerchants}. Händler nachher: ${source.merchants}.`
                     );
                     UI.InfoMessage(`(SIMULIERT) Ressourcen von ${source.name} angefordert: H:${payload.wood} L:${payload.stone} E:${payload.iron}`, 3000);
@@ -647,46 +647,33 @@
                                 "iron" : payload.iron,
                             });
 
-                            // *** GEÄNDERTE ERFOLGSPRÜFUNG HIER ***
-                            // Betrachte es als Erfolg, wenn keine explizite Fehlermeldung vom Server kam.
-                            // Wenn response null/undefined ist ODER response.message ein String ist und "Fehler" enthält (oft bei ungültigen Anfragen)
-                            const isErrorResponse = !response || (typeof response.message === 'string' && response.message.includes('Fehler'));
-                            if (!isErrorResponse) {
-                                // Annahme: Sendung war erfolgreich oder zumindest nicht explizit fehlerhaft
-                                let transferredWood = response && response.resources ? (response.resources.wood || 0) : payload.wood;
-                                let transferredStone = response && response.resources ? (response.resources.stone || 0) : payload.stone;
-                                let transferredIron = response && response.resources ? (response.resources.iron || 0) : payload.iron;
+                            // *** GEÄNDERTE ERFOLGSPRÜFUNG HIER: Annahme des Erfolgs, solange kein Netzwerkfehler auftritt ***
+                            // Wir gehen davon aus, dass die Sendung erfolgreich war, wenn der Post-Request selbst
+                            // nicht in einen Catch-Block läuft (also ein Netzwerkfehler auftrat).
+                            UI.SuccessMessage(`Ressourcen von ${source.name} gesendet (angenommen): H:${payload.wood} L:${payload.stone} E:${payload.iron}`, 3000);
+                            console.log(`Ressourcen anscheinend erfolgreich gesendet von ${source.name}. Übertragene Menge aus Payload angenommen. Serverantwort (wenn vorhanden):`, response);
 
-                                // Wenn Ressourcen tatsächlich übertragen wurden oder payload > 0, aber response.resources 0 ist (z.B. bei Race Condition)
-                                // gehen wir davon aus, dass es gesendet wurde.
-                                UI.SuccessMessage(`Ressourcen von ${source.name} gesendet (wahrscheinlich): H:${payload.wood} L:${payload.stone} E:${payload.iron}`, 3000);
-                                console.log(`Ressourcen anscheinend erfolgreich gesendet von ${source.name}. Übertragene Menge aus Payload angenommen. Serverantwort:`, response);
+                            totalSentPotential.wood += payload.wood;
+                            totalSentPotential.stone += payload.stone;
+                            totalSentPotential.iron += payload.iron;
 
-                                totalSentPotential.wood += payload.wood; // Nutze payload, da response.resources unzuverlässig sein kann
-                                totalSentPotential.stone += payload.stone;
-                                totalSentPotential.iron += payload.iron;
+                            sendSuccessful = true; // Markiere als erfolgreich, um Schleife zu beenden
+                            logDebug("Sendung als erfolgreich angenommen. Aktualisiere eingehende Transporte vom Server für genauen Bedarf.");
+                            await initializeCurrentResources(true); // `true` um die Info-Nachricht zu unterdrücken
+                            // Aktualisiere den *verbleibenden Bedarf* basierend auf den JETZT AKTUELLEN theoretischen Ressourcen
+                            currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
+                            currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
+                            currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
 
-                                sendSuccessful = true; // Markiere als erfolgreich, um Schleife zu beenden
-                                logDebug("Sendung als erfolgreich angenommen. Aktualisiere eingehende Transporte vom Server für genauen Bedarf.");
-                                await initializeCurrentResources(true); // `true` um die Info-Nachricht zu unterdrücken
-                                // Aktualisiere den *verbleibenden Bedarf* basierend auf den JETZT AKTUELLEN theoretischen Ressourcen
-                                currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
-                                currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
-                                currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
-
-                            } else {
-                                let errorMessage = response ? (response.message || 'Unbekannter Fehler') : 'Serverantwort war leer oder ungültig.';
-                                UI.ErrorMessage(`FEHLER! Sendung von ${source.name} fehlgeschlagen (Versuch ${retryCount + 1}): ${errorMessage}`, 5000);
-                                logError(`FEHLER beim Senden von Ressourcen von ${source.name}. Versuch ${retryCount + 1}. Antwort:`, response);
-                            }
                         } catch (jqXHR) {
+                            // Dieser Block fängt nur *echte* Netzwerkfehler ab (z.B. Timeout, keine Verbindung)
                             UI.ErrorMessage(`NETZWERKFEHLER! Sendung von ${source.name} fehlgeschlagen (Versuch ${retryCount + 1})`, 5000);
                             logError(`NETZWERKFEHLER beim Senden von ${source.name}. Versuch ${retryCount + 1}. jqXHR/Error:`, jqXHR);
                         }
                     } // Ende der Wiederholungsschleife
                     if (!sendSuccessful) {
-                        logWarn(`Alle ${MAX_RETRIES} Versuche zum Senden von ${source.name} fehlgeschlagen ODER expliziter Fehler vom Server. Überspringe dieses Dorf für diese Anforderung.`);
-                        UI.ErrorMessage(`Alle Versuche von ${source.name} fehlgeschlagen. Bitte manuell prüfen!`, 5000);
+                        logWarn(`Alle ${MAX_RETRIES} Versuche zum Senden von ${source.name} sind wegen Netzwerkfehlern fehlgeschlagen. Überspringe dieses Dorf für diese Anforderung.`);
+                        UI.ErrorMessage(`Alle Versuche von ${source.name} sind wegen Netzwerkfehlern fehlgeschlagen. Bitte manuell prüfen!`, 5000);
                     }
                 }
             }
@@ -729,7 +716,7 @@
             const originalSource = sources.find(s => s.id == sourceId);
             if (originalSource) {
                 originalSource.wood = sourcesToUpdate[sourceId].wood;
-                originalSource.stone = sourcesToupdate[sourceId].stone;
+                originalSource.stone = sourcesToUpdate[sourceId].stone;
                 originalSource.iron = sourcesToUpdate[sourceId].iron;
                 originalSource.merchants = sourcesToUpdate[sourceId].merchants;
                 logDebug(`Quelldorf ${originalSource.name} (ID: ${sourceId}) global aktualisiert` + (DEBUG_MODE ? ' (SIMULIERT)' : '') + `. Neue Werte: H:${originalSource.wood}, L:${originalSource.stone}, E:${originalSource.iron}, Händler: ${originalSource.merchants}`);
