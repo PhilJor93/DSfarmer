@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.0)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.1)
 // @namespace     http://tampermonkey.net/
-// @version       2.0 // Fix: Echte gleichzeitige Anforderung pro Dorf
+// @version       2.1 // Fix: maxSendIron wird nun korrekt gespeichert und geladen
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.0' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.1' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -34,7 +34,7 @@
         selectedGroupId: '0', // Standard: 'Alle Dörfer'
         maxSendWood: 0,       // Standard: Keine Begrenzung (wird intern als Gesamtbedarf behandelt, nicht unbegrenzt)
         maxSendStone: 0,
-        maxSendIron: 0,
+        maxSendIron: 0,       // Korrigiert: maxSendIron
         minWood: 10000,       // Mindestmenge Holz im Quelldorf
         minStone: 10000,      // Mindestmenge Lehm im Quelldorf
         minIron: 10000        // Mindestmenge Eisen im Quelldorf
@@ -81,7 +81,8 @@
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
                 scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0;
-                scriptSettings.maxIron = parseInt(parsed.maxIron) || 0;
+                // Korrektur hier: Sicherstellen, dass maxSendIron korrekt geladen wird
+                scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0;
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
                 scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
                 scriptSettings.minStone = (parsed.minStone !== undefined && !isNaN(parseInt(parsed.minStone))) ? parseInt(parsed.minStone) : 10000;
@@ -156,7 +157,7 @@
                         </tr>
                         <tr>
                             <td>Max. Eisen pro Dorf:</td>
-                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxIron}" min="0" class="input-nicer"></td>
+                            <td><input type="number" id="maxIronInput" value="${scriptSettings.maxSendIron}" min="0" class="input-nicer"></td>
                         </tr>
                         <tr>
                             <td>Mindest-Holz im Quelldorf:</td>
@@ -188,7 +189,9 @@
                 scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
                 scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
                 scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
-                scriptSettings.maxIron = parseInt($('#maxIronInput').val()) || 0;
+                // Korrektur hier: ID des Input-Feldes war maxIronInput, aber die Variable war maxIron.
+                // Jetzt wird der Wert aus maxIronInput korrekt in maxSendIron gespeichert.
+                scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
                 scriptSettings.minWood = parseInt($('#minWoodInput').val()) || 0;
                 scriptSettings.minStone = parseInt($('#minStoneInput').val()) || 0;
                 scriptSettings.minIron = parseInt($('#minIronInput').val()) || 0;
@@ -378,7 +381,7 @@
                 merchantsNeededForPayload = 0; // Setze zurück, um die Händler für die *reduzierten* Mengen neu zu berechnen
                 for (const resType of resourceTypes) {
                     let reducedAmount = Math.floor(potentialSendAmounts[resType] * reductionFactor);
-                    reducedAmount = Math.floor(reducedAmount / 1000) * 1000; // Runde auf das nächste Tausender-Vielfache ab
+                    reducedAmount = Math.floor(reducedAmount / 1000) * 1000; // Runde auf das nächste Tausender-Vielfaches ab
                     payload[resType] = reducedAmount;
                     merchantsNeededForPayload += Math.ceil(payload[resType] / 1000);
                 }
