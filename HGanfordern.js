@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.13)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.14)
 // @namespace     http://tampermonkey.net/
-// @version       2.13 // Fix: Direkte ID-Erkennung für eingehende Transporte im Marktplatz
+// @version       2.14 // Fix: Robuste Text-basierte Erkennung eingehender Transporte
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.13' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.14' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -252,31 +252,57 @@
             const marketPage = await $.get(game_data.link_base_pure + "market");
             const $marketPage = $(marketPage);
 
-            // NEUER Selektor: Finde das div mit der ID 'market_incoming_transports'
-            const $incomingTransportsDiv = $marketPage.find('#market_incoming_transports');
+            // NEUER Selektor: Finde das Element, das den Text "Eintreffend:" enthält, und seine Geschwister/Nachbarn
+            // Wir suchen nach einem Textknoten "Eintreffend:", dann greifen wir auf das Elternelement zu
+            // und suchen darin nach den nowrap-Spans mit den Ressourcen-Icons.
+            const $incomingTextElement = $marketPage.find('*:contains("Eintreffend:")').filter(function() {
+                // Filtere, um sicherzustellen, dass es sich um einen direkten Textknoten oder ein sehr nahes Element handelt
+                return $(this).text().includes("Eintreffend:");
+            }).first();
 
-            if ($incomingTransportsDiv.length > 0) {
-                logDebug("Marktplatz: Div 'market_incoming_transports' gefunden.", $incomingTransportsDiv);
+            if ($incomingTextElement.length > 0) {
+                // Das Element, das "Eintreffend:" enthält, ist gefunden.
+                // Jetzt suchen wir die Ressourcen-Spans in seiner Nähe, z.B. in seinem Elternelement oder direkt danach.
+                // Basierend auf dem Pastebin-Code ist es der direkte Textknoten in einer `<th>` oder `div` oder `p`.
+                // Wir suchen die `span.nowrap`-Elemente direkt innerhalb des übergeordneten Elements,
+                // das den "Eintreffend:"-Text enthält.
 
-                const woodSpan = $incomingTransportsDiv.find('span.nowrap:has(span.icon.header.wood)');
-                const stoneSpan = $incomingTransportsDiv.find('span.nowrap:has(span.icon.header.stone)');
-                const ironSpan = $incomingTransportsDiv.find('span.nowrap:has(span.icon.header.iron)');
+                // Finde das übergeordnete Element, das sowohl den Text als auch die Spans enthält
+                let $containerElement;
+                if ($incomingTextElement.is('th') || $incomingTextElement.is('div') || $incomingTextElement.is('p')) {
+                    $containerElement = $incomingTextElement;
+                } else {
+                    $containerElement = $incomingTextElement.closest('th, div, p'); // Oder ein anderer passender Container
+                    if ($containerElement.length === 0) {
+                        $containerElement = $incomingTextElement.parent(); // Fallback zum direkten Elternelement
+                    }
+                }
 
-                const currentIncomingWood = parseResourceAmount(woodSpan.text());
-                const currentIncomingStone = parseResourceAmount(stoneSpan.text());
-                const currentIncomingIron = parseResourceAmount(ironSpan.text());
+                if ($containerElement.length > 0) {
+                     logDebug("Marktplatz: 'Eintreffend:' Text gefunden im Container:", $containerElement[0].outerHTML);
 
-                incomingWoodForTheoretical += currentIncomingWood;
-                incomingStoneForTheoretical += currentIncomingStone;
-                incomingIronForTheoretical += currentIncomingIron;
+                    const woodSpan = $containerElement.find('span.nowrap:has(span.icon.header.wood)');
+                    const stoneSpan = $containerElement.find('span.nowrap:has(span.icon.header.stone)');
+                    const ironSpan = $containerElement.find('span.nowrap:has(span.icon.header.iron)');
 
-                actualIncomingWood += currentIncomingWood;
-                actualIncomingStone += currentIncomingStone;
-                actualIncomingIron += currentIncomingIron;
+                    const currentIncomingWood = parseResourceAmount(woodSpan.text());
+                    const currentIncomingStone = parseResourceAmount(stoneSpan.text());
+                    const currentIncomingIron = parseResourceAmount(ironSpan.text());
 
-                logDebug(`Marktplatz: Eingehende Transporte erfasst: Holz: ${incomingWoodForTheoretical}, Lehm: ${incomingStoneForTheoretical}, Eisen: ${incomingIronForTheoretical}`);
+                    incomingWoodForTheoretical += currentIncomingWood;
+                    incomingStoneForTheoretical += currentIncomingStone;
+                    incomingIronForTheoretical += currentIncomingIron;
+
+                    actualIncomingWood += currentIncomingWood;
+                    actualIncomingStone += currentIncomingStone;
+                    actualIncomingIron += currentIncomingIron;
+
+                    logDebug(`Marktplatz: Eingehende Transporte erfasst: Holz: ${incomingWoodForTheoretical}, Lehm: ${incomingStoneForTheoretical}, Eisen: ${incomingIronForTheoretical}`);
+                } else {
+                     logDebug("Marktplatz: 'Eintreffend:' Text gefunden, aber kein passender Container für Ressourcen-Spans.");
+                }
             } else {
-                logDebug("Marktplatz: Div 'market_incoming_transports' nicht gefunden.");
+                logDebug("Marktplatz: 'Eintreffend:' Text nicht gefunden.");
             }
         } catch (e) {
             logError("Fehler beim Abrufen der Marktplatz-Seite für eingehende Transporte:", e);
