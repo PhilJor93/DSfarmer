@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) - PRODUKTIV MODE (V.1.2)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) - PRODUKTIV MODE (V.1.3)
 // @namespace     http://tampermonkey.net/
-// @version       1.3 // Debug-Alerts entfernt, interne Logik überarbeitet, Debug-Logs in Console hinzugefügt
+// @version       1.4 // Debug-Alerts entfernt, interne Logik überarbeitet, Debug-Logs in Console hinzugefügt, Fehlerbehandlung TribalWars.post, Delay
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_VERSION = '1.3'; // HIER WIRD DIE VERSION GEFÜHRT
+    const SCRIPT_VERSION = '1.4'; // HIER WIRD DIE VERSION GEFÜHRT
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -56,7 +56,7 @@
                 // Parsed-Werte sicher in scriptSettings übernehmen, mit Fallback auf Standardwerte
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
-                scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0; // KORRIGIERT: maxSendStone
+                scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0;
                 scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0;
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
                 scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
@@ -163,7 +163,7 @@
             $('#saveSettingsBtn').on('click', function() {
                 scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
                 scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
-                scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0; // KORRIGIERT: maxSendStone
+                scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
                 scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
                 scriptSettings.minWood = parseInt($('#minWoodInput').val()) || 0;
                 scriptSettings.minStone = parseInt($('#minStoneInput').val()) || 0;
@@ -240,7 +240,7 @@
             var woodCost = parseInt($parentRow.find("[data-cost]").eq(0).text().trim());
             var stoneCost = parseInt($parentRow.find("[data-cost]").eq(1).text().trim());
             var ironCost = parseInt($parentRow.find("[data-cost]").eq(2).text().trim());
-            
+
             resourcesNeeded.push({ "wood": woodCost, "stone": stoneCost, "iron": ironCost });
 
             var $buttonCell = $inactiveBtn.parent().parent();
@@ -355,7 +355,8 @@
                                 "iron" : payload.iron,
                             });
 
-                            const isSuccess = response.success === true || (typeof response.message === 'string' && response.message.includes('Rohstoffe erfolgreich verschickt'));
+                            // --- GEÄNDERTER BEREICH ---
+                            const isSuccess = response && (response.success === true || (typeof response.message === 'string' && response.message.includes('Rohstoffe erfolgreich verschickt')));
 
                             if (isSuccess) {
                                 let transferredWood = response.resources ? (response.resources.wood || 0) : payload.wood;
@@ -385,13 +386,18 @@
 
                                 needed[resType] -= sendAmount; // Reduziere den verbleibenden Bedarf
                             } else {
-                                UI.ErrorMessage(`Fehler beim Senden von Ressourcen von ${source.name}: ${response.message || 'Unbekannter Fehler'}`, 5000);
+                                let errorMessage = response ? (response.message || 'Unbekannter Fehler') : 'Serverantwort war leer oder ungültig.';
+                                UI.ErrorMessage(`Fehler beim Senden von Ressourcen von ${source.name}: ${errorMessage}`, 5000);
                                 console.error(`DEBUG ERROR: Fehler beim Senden von Ressourcen von ${source.name}. Antwort:`, response);
                             }
                         } catch (jqXHR) {
-                            UI.ErrorMessage(`Netzwerkfehler beim Senden von ${source.name}`, 5000);
-                            console.error(`DEBUG ERROR: Netzwerkfehler beim Senden von ${source.name}. jqXHR:`, jqXHR);
+                            UI.ErrorMessage(`Netzwerkfehler oder unerwartete Antwort beim Senden von ${source.name}`, 5000);
+                            console.error(`DEBUG ERROR: Netzwerkfehler oder unerwartete Antwort beim Senden von ${source.name}. jqXHR/Error:`, jqXHR);
                         }
+
+                        // --- VERZÖGERUNG HINZUFÜGEN ---
+                        // Füge eine kleine Pause ein, um Server-Flooding zu vermeiden
+                        await new Promise(resolve => setTimeout(resolve, 300)); // 300 Millisekunden Pause
                     }
                 }
             }
@@ -427,7 +433,7 @@
             $(`td[id='request${buildingNr}']`).remove(); // Button entfernen
         }
         console.log("DEBUG: Ressourcenanforderung Zusammenfassung:", summaryMessage);
-        
+
         // Aktualisiere das ursprüngliche 'sources'-Array global für nachfolgende Anforderungen
         for (const sourceId in sourcesToUpdate) {
             const originalSource = sources.find(s => s.id == sourceId);
@@ -472,7 +478,7 @@
             $rowsResPage.each(function() {
                 var $row = $(this);
                 var tempVillageID = $row.find('span[data-id]').attr("data-id");
-                
+
                 // Aktuelles Dorf von den potenziellen Quellen ausschließen
                 if (tempVillageID != game_data.village.id) {
                     var coordsMatch = $row.find("span.quickedit-vn").text().trim().match(/(\d+)\|(\d+)/);
