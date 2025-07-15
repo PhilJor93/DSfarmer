@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.1)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.2)
 // @namespace     http://tampermonkey.net/
-// @version       2.1 // Fix: maxSendIron wird nun korrekt gespeichert und geladen
+// @version       2.2 // Fix: maxSendIron Initialisierung und Konsistenz der Variablennamen
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.1' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.2' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -34,7 +34,7 @@
         selectedGroupId: '0', // Standard: 'Alle Dörfer'
         maxSendWood: 0,       // Standard: Keine Begrenzung (wird intern als Gesamtbedarf behandelt, nicht unbegrenzt)
         maxSendStone: 0,
-        maxSendIron: 0,       // Korrigiert: maxSendIron
+        maxSendIron: 0,       // Korrigiert: Initialisierung von maxSendIron
         minWood: 10000,       // Mindestmenge Holz im Quelldorf
         minStone: 10000,      // Mindestmenge Lehm im Quelldorf
         minIron: 10000        // Mindestmenge Eisen im Quelldorf
@@ -81,8 +81,11 @@
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
                 scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0;
-                // Korrektur hier: Sicherstellen, dass maxSendIron korrekt geladen wird
-                scriptSettings.maxSendIron = parseInt(parsed.maxSendIron) || 0;
+                // Korrektur: Sicherstellen, dass maxSendIron korrekt geladen wird,
+                // und dass `parsed.maxIron` (falls es noch im alten Format gespeichert wurde)
+                // zu `maxSendIron` gemappt wird, bevorzugt aber `parsed.maxSendIron`.
+                scriptSettings.maxSendIron = (parsed.maxSendIron !== undefined && !isNaN(parseInt(parsed.maxSendIron))) ? parseInt(parsed.maxSendIron) : (parseInt(parsed.maxIron) || 0);
+
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
                 scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
                 scriptSettings.minStone = (parsed.minStone !== undefined && !isNaN(parseInt(parsed.minStone))) ? parseInt(parsed.minStone) : 10000;
@@ -189,8 +192,7 @@
                 scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
                 scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
                 scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
-                // Korrektur hier: ID des Input-Feldes war maxIronInput, aber die Variable war maxIron.
-                // Jetzt wird der Wert aus maxIronInput korrekt in maxSendIron gespeichert.
+                // Korrektur hier: Sicherstellen, dass der Wert aus dem Input-Feld korrekt in scriptSettings.maxSendIron gespeichert wird
                 scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
                 scriptSettings.minWood = parseInt($('#minWoodInput').val()) || 0;
                 scriptSettings.minStone = parseInt($('#minStoneInput').val()) || 0;
