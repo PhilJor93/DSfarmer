@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.22)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.23)
 // @namespace     http://tampermonkey.net/
-// @version       2.22 // Feature: Debug-Modus steuerbar über window.HGA_DEBUG in Schnellleiste
+// @version       2.23 // Fix: Prod-Modus: Eingehende Transporte werden nach JEDER Sendung neu abgerufen, um Überlieferung zu vermeiden.
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     // Standardmäßig ist es false, wenn die Variable nicht gesetzt ist.
     const DEBUG_MODE = window.HGA_DEBUG === true;
 
-    const SCRIPT_VERSION = '2.22' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.23' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -256,16 +256,27 @@
 
             if ($incomingTextElement.length > 0) {
                 let $containerElement;
-                if ($incomingTextElement.is('th') || $incomingTextElement.is('div') || $incomingTextElement.is('p')) {
-                    $containerElement = $incomingTextElement;
-                } else {
-                    $containerElement = $incomingTextElement.closest('th, div, p');
-                    if ($containerElement.length === 0) {
-                        $containerElement = $incomingTextElement.parent();
-                    }
+                // Versuche, das nächste tr (oder einen anderen passenden Container) zu finden
+                $containerElement = $incomingTextElement.closest('tr');
+                if ($containerElement.length === 0) {
+                     $containerElement = $incomingTextElement.parent(); // Fallback zum direkten Elternteil
                 }
-
-                if ($containerElement.length > 0) {
+                 if ($containerElement.length === 0) {
+                    logDebug("Marktplatz: 'Eintreffend:' Text gefunden, aber kein passender TR oder Parent für Ressourcen-Spans.");
+                    // Versuche, Icons direkt auf der Marktplatz-Seite zu finden, wenn kein spezifischer Container gefunden wurde
+                    // Dies ist eine Fallback-Strategie, falls das Layout anders ist
+                    const allSpans = $marketPage.find('span.nowrap');
+                    allSpans.each(function() {
+                        const $this = $(this);
+                        if ($this.find('span.icon.header.wood').length) {
+                            currentIncomingWood = parseResourceAmount($this.text());
+                        } else if ($this.find('span.icon.header.stone').length) {
+                            currentIncomingStone = parseResourceAmount($this.text());
+                        } else if ($this.find('span.icon.header.iron').length) {
+                            currentIncomingIron = parseResourceAmount($this.text());
+                        }
+                    });
+                } else {
                     const woodSpan = $containerElement.find('span.nowrap:has(span.icon.header.wood)');
                     const stoneSpan = $containerElement.find('span.nowrap:has(span.icon.header.stone)');
                     const ironSpan = $containerElement.find('span.nowrap:has(span.icon.header.iron)');
@@ -273,13 +284,11 @@
                     currentIncomingWood = parseResourceAmount(woodSpan.text());
                     currentIncomingStone = parseResourceAmount(stoneSpan.text());
                     currentIncomingIron = parseResourceAmount(ironSpan.text());
-
-                    logDebug(`Marktplatz: Eingehende Transporte (echt) erfasst: Holz: ${currentIncomingWood}, Lehm: ${currentIncomingStone}, Eisen: ${currentIncomingIron}`);
-                } else {
-                    logDebug("Marktplatz: 'Eintreffend:' Text gefunden, aber kein passender Container für Ressourcen-Spans.");
                 }
+                 logDebug(`Marktplatz: Eingehende Transporte (echt) erfasst: Holz: ${currentIncomingWood}, Lehm: ${currentIncomingStone}, Eisen: ${currentIncomingIron}`);
+
             } else {
-                logDebug("Marktplatz: 'Eintreffend:' Text nicht gefunden.");
+                logDebug("Marktplatz: 'Eintreffend:' Text nicht gefunden. Vermutlich keine eingehenden Transporte.");
             }
         } catch (e) {
             logError("Fehler beim Abrufen der Marktplatz-Seite für eingehende Transporte:", e);
@@ -606,7 +615,7 @@
                     logDebug(`Nach SIMULIERTER Lieferung von ${source.name}: Theoretische Ressourcen jetzt: H:${currentTheoreticalWood}, L:${currentTheoreticalStone}, E:${currentTheoreticalIron}`);
                     logDebug(`Nach SIMULIERTER Lieferung von ${source.name}: Eingehende Transporte (simuliert) jetzt: H:${actualIncomingWood}, L:${actualIncomingStone}, E:${actualIncomingIron}`);
                     // Hier zusätzlich die echten Werte loggen, die zuletzt vom Server kamen
-                    logDebug(`Nach SIMULIERTER Lieferung von ${source.name}: Echte eingehende Transporte vom Server (zuletzt abgerufen): H:${lastActualIncomingWood}, L:${lastActualIncomingStone}, E:${lastActualIncomingIron}`);
+                    logDebug(`Nach SIMULIERTER Lieferung von ${source.name}: Echte eingehende Transporte vom Server (zuletzt abgerufen): H:${lastActualIncomingWood}, L:${lastActualIncomingStone}, E:${lastActualIncomingIron}.`);
 
 
                     // Aktualisiere den *verbleibenden Bedarf* basierend auf den aktuellen theoretischen Ressourcen
@@ -616,12 +625,6 @@
 
                 } else { // PRODUKTIV MODUS
                     try {
-                        // PRODUKTIV-MODUS: Vor JEDER tatsächlichen Sendung die ECHTEN Werte vom Server holen
-                        // Dies stellt sicher, dass wir immer den aktuellsten Stand berücksichtigen,
-                        // bevor wir die nächste Sendung anstoßen.
-                        logDebug("PRODUKTIV-Modus: Hole VOR Sendung von der Marktplatzseite.");
-                        await initializeCurrentResources(true); // Ruft fetchRealIncomingResources auf
-
                         const response = await TribalWars.post("market", {
                             "ajaxaction" : "map_send",
                             "village" : source.id
@@ -649,6 +652,17 @@
 
                                 // source (lokale Kopie) wurde bereits oben aktualisiert
                                 // sourcesToUpdate (globale Referenz) wurde bereits oben gesetzt
+
+                                // *** WICHTIGE NEUE LOGIK FÜR PRODUKTIV-MODUS ***
+                                // Nach jeder erfolgreichen Sendung die eingehenden Transporte vom Server neu abrufen.
+                                // Dies stellt sicher, dass der Gesamtbedarf des Zieldorfes immer aktuell ist.
+                                logDebug("PRODUKTIV-Modus: Erfolgreich gesendet. Aktualisiere eingehende Transporte vom Server.");
+                                await initializeCurrentResources(true); // `true` um die Info-Nachricht zu unterdrücken
+                                // Aktualisiere den *verbleibenden Bedarf* basierend auf den JETZT AKTUELLEN theoretischen Ressourcen
+                                currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
+                                currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
+                                currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
+
                             } else {
                                 logDebug(`Server antwortete mit Erfolg, aber 0 Ressourcen gesendet von ${source.name}. Wahrscheinlich wurde der Bedarf im letzten Moment gedeckt oder zu wenig verfügbar.`);
                             }
@@ -664,7 +678,7 @@
                     }
                 }
                 // --- VERZÖGERUNG HINZUFÜGEN (auch im Debug-Modus sinnvoll für realistische Simulation) ---
-                await new Promise(resolve => setTimeout(resolve, 300)); // 300 Millisekunden Pause
+                await new Promise(resolve => setTimeout(resolve, 300)); // 300 Millisekunden Pause zwischen Sendungen
             }
         }
 
