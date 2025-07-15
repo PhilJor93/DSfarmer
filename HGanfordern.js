@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.2)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.3)
 // @namespace     http://tampermonkey.net/
-// @version       2.2 // Fix: maxSendIron Initialisierung und Konsistenz der Variablennamen
+// @version       2.3 // Fix: Korrekte Lagerkapazitätsprüfung im Zieldorf
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.2' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.3' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -34,7 +34,7 @@
         selectedGroupId: '0', // Standard: 'Alle Dörfer'
         maxSendWood: 0,       // Standard: Keine Begrenzung (wird intern als Gesamtbedarf behandelt, nicht unbegrenzt)
         maxSendStone: 0,
-        maxSendIron: 0,       // Korrigiert: Initialisierung von maxSendIron
+        maxSendIron: 0,
         minWood: 10000,       // Mindestmenge Holz im Quelldorf
         minStone: 10000,      // Mindestmenge Lehm im Quelldorf
         minIron: 10000        // Mindestmenge Eisen im Quelldorf
@@ -192,7 +192,6 @@
                 scriptSettings.selectedGroupId = $('#resourceGroupSelect').val();
                 scriptSettings.maxSendWood = parseInt($('#maxWoodInput').val()) || 0;
                 scriptSettings.maxSendStone = parseInt($('#maxStoneInput').val()) || 0;
-                // Korrektur hier: Sicherstellen, dass der Wert aus dem Input-Feld korrekt in scriptSettings.maxSendIron gespeichert wird
                 scriptSettings.maxSendIron = parseInt($('#maxIronInput').val()) || 0;
                 scriptSettings.minWood = parseInt($('#minWoodInput').val()) || 0;
                 scriptSettings.minStone = parseInt($('#minStoneInput').val()) || 0;
@@ -312,15 +311,16 @@
             return;
         }
 
-        // Prüfung auf Lagerplatz im Zieldorf (einschließlich bereits angeforderter Ressourcen)
-        const totalNeededAfterCurrent = initialNeeded.wood + initialNeeded.stone + initialNeeded.iron;
-        const currentTotalResources = currentTheoreticalWood + currentTheoreticalStone + currentTheoreticalIron;
-
-        if (currentTotalResources + totalNeededAfterCurrent > WHCap * 3) { // Prüfe ob Gesamtlagerkapazität reicht (3fache Menge für alle res)
+        // --- KORREKTUR DER LAGERKAPAZITÄTSPRÜFUNG HIER ---
+        // Prüfe für jede Ressource einzeln, ob der benötigte Wert die Kapazität nicht übersteigt
+        if (currentTheoreticalWood + initialNeeded.wood > WHCap ||
+            currentTheoreticalStone + initialNeeded.stone > WHCap ||
+            currentTheoreticalIron + initialNeeded.iron > WHCap) {
              UI.ErrorMessage("Nicht genug Lagerplatz im Ziel-Dorf für die benötigten Ressourcen (bereits angeforderte Ressourcen berücksichtigt)!", 4000);
              logWarn("Nicht genug Lagerplatz im Zieldorf. Anforderung abgebrochen.");
              return;
          }
+        // --- ENDE DER KORREKTUR ---
 
 
         let totalSentPotential = { wood: 0, stone: 0, iron: 0 }; // Verfolgt, was TATSÄCHLICH gesendet wird (im Debug-Modus simuliert)
