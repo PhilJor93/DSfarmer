@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.5)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.6)
 // @namespace     http://tampermonkey.net/
-// @version       2.5 // Fix: Lagerprüfung und theoretische Ressourcen in Echtzeit aktualisiert
+// @version       2.6 // Neu: Debug-Infos zu Lager & Transporten vor Anforderung
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.5' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.6' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -28,6 +28,12 @@
     var currentTheoreticalStone = 0;
     var currentTheoreticalIron = 0;
     var WHCap = 0; // Maximale Lagerkapazität des aktuellen Dorfes
+
+    // Variablen für eingehende Transporte (nur zur Anzeige im Debug-Modus)
+    var actualIncomingWood = 0;
+    var actualIncomingStone = 0;
+    var actualIncomingIron = 0;
+
 
     // --- Einstellungen und Speicher-Schlüssel ---
     var scriptSettings = {
@@ -208,6 +214,7 @@
     /**
      * Initialisiert die aktuellen (theoretischen) Ressourcen des Dorfes
      * unter Berücksichtigung der aktuellen Bestände und eingehender Transporte.
+     * Speichert auch die echten eingehenden Transporte separat für den Debug-Modus.
      * @returns {Promise<void>} Ein Promise, das erfüllt wird, wenn die Ressourcen initialisiert sind.
      */
     async function initializeCurrentResources() {
@@ -216,37 +223,48 @@
         currentTheoreticalIron = game_data.village.iron;
         WHCap = game_data.village.storage_max;
 
+        // Setze die tatsächlichen eingehenden Transporte zurück für jede Initialisierung
+        actualIncomingWood = 0;
+        actualIncomingStone = 0;
+        actualIncomingIron = 0;
+
         logDebug(`Aktuelle Ressourcen (Start - ohne eingehende): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}. Lagerkapazität: ${WHCap}`);
 
         try {
             const marketPage = await $.get(game_data.link_base_pure + "market");
             const $marketPage = $(marketPage);
-            let incomingWood = 0;
-            let incomingStone = 0;
-            let incomingIron = 0;
+            let incomingWoodForTheoretical = 0;
+            let incomingStoneForTheoretical = 0;
+            let incomingIronForTheoretical = 0;
 
             // Finde die Tabelle der eingehenden Transporte
-            // Die Struktur kann variieren, aber oft ist es eine Tabelle mit der Klasse "vis"
-            // und einer Überschrift, die auf "Eingehende Transporte" oder "Eigene Transporte" hinweist.
             const $incomingTransportsTable = $marketPage.find('h4:contains("Eigene Transporte") + .vis, h4:contains("Eingehende Transporte") + .vis');
 
             if ($incomingTransportsTable.length > 0) {
                 $incomingTransportsTable.find('tr.row_a, tr.row_b').each(function() {
                     const $row = $(this);
-                    // Sucht nach Ressourcen-Icons und extrahiert die Menge
-                    const woodMatch = $row.find('img[src*="wood.png"]').next().text().match(/(\d+)/); // Regex angepasst, um nur Zahlen zu erfassen
+                    const woodMatch = $row.find('img[src*="wood.png"]').next().text().match(/(\d+)/);
                     const stoneMatch = $row.find('img[src*="stone.png"]').next().text().match(/(\d+)/);
                     const ironMatch = $row.find('img[src*="iron.png"]').next().text().match(/(\d+)/);
 
-                    if (woodMatch) incomingWood += parseInt(woodMatch[1]); // [1] für die erste Erfassungsgruppe
-                    if (stoneMatch) incomingStone += parseInt(stoneMatch[1]);
-                    if (ironMatch) incomingIron += parseInt(ironMatch[1]);
-                });
-                logDebug(`Eingehende Transporte gefunden: Holz: ${incomingWood}, Lehm: ${incomingStone}, Eisen: ${incomingIron}`);
+                    const currentIncomingWood = woodMatch ? parseInt(woodMatch[1]) : 0;
+                    const currentIncomingStone = stoneMatch ? parseInt(stoneMatch[1]) : 0;
+                    const currentIncomingIron = ironMatch ? parseInt(ironMatch[1]) : 0;
 
-                currentTheoreticalWood += incomingWood;
-                currentTheoreticalStone += incomingStone;
-                currentTheoreticalIron += incomingIron;
+                    incomingWoodForTheoretical += currentIncomingWood;
+                    incomingStoneForTheoretical += currentIncomingStone;
+                    incomingIronForTheoretical += currentIncomingIron;
+
+                    // Speichere die echten eingehenden Transporte separat (für Debug-Anzeige)
+                    actualIncomingWood += currentIncomingWood;
+                    actualIncomingStone += currentIncomingStone;
+                    actualIncomingIron += currentIncomingIron;
+                });
+                logDebug(`Eingehende Transporte gefunden: Holz: ${incomingWoodForTheoretical}, Lehm: ${incomingStoneForTheoretical}, Eisen: ${incomingIronForTheoretical}`);
+
+                currentTheoreticalWood += incomingWoodForTheoretical;
+                currentTheoreticalStone += incomingStoneForTheoretical;
+                currentTheoreticalIron += incomingIronForTheoretical;
 
                 logDebug(`Aktuelle Ressourcen (aktualisiert mit eingehenden): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
             } else {
@@ -343,7 +361,17 @@
      * @param {number} buildingNr - Der Index des Gebäudes im resourcesNeeded-Array.
      */
     window.requestRes = async function(buildingNr) { // window. zur globalen Verfügbarkeit, async für await
-        logDebug(`Anforderung für Gebäude ${buildingNr} gestartet.`);
+        logDebug(`--- Anforderung für Gebäude ${buildingNr} gestartet ---`);
+
+        // Im Debug-Modus zusätzliche Infos ausgeben
+        if (DEBUG_MODE) {
+            logDebug(`[DEBUG-INFO]: Aktueller Lagerbestand (Holz/Lehm/Eisen): ${game_data.village.wood}/${game_data.village.stone}/${game_data.village.iron}`);
+            logDebug(`[DEBUG-INFO]: Eingehende Transporte (echt): Holz: ${actualIncomingWood}, Lehm: ${actualIncomingStone}, Eisen: ${actualIncomingIron}`);
+            logDebug(`[DEBUG-INFO]: Theoretischer Gesamtbestand (inkl. aktueller + eingehender): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
+            logDebug(`[DEBUG-INFO]: Verfügbarer Lagerplatz (pro Ressource): ${WHCap - currentTheoreticalWood} Holz, ${WHCap - currentTheoreticalStone} Lehm, ${WHCap - currentTheoreticalIron} Eisen`);
+            logDebug(`[DEBUG-INFO]: Max. Lagerkapazität: ${WHCap}`);
+        }
+
 
         // Der aktuelle Bedarf wird HIER immer neu berechnet, basierend auf dem aktuellen theoretischen Stand
         // (der jetzt *innerhalb* der Schleife aktualisiert wird).
@@ -353,7 +381,7 @@
             iron: Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron)
         };
 
-        logDebug(`Benötigter Bedarf für Gebäude ${buildingNr} (inkl. theoretischer Ressourcen): H:${currentNeeded.wood}, L:${currentNeeded.stone}, E:${currentNeeded.iron}`);
+        logDebug(`Benötigter Bedarf für Gebäude ${buildingNr} (berechnet auf Basis des theoretischen Bestands): H:${currentNeeded.wood}, L:${currentNeeded.stone}, E:${currentNeeded.iron}`);
 
         if (currentNeeded.wood <= 0 && currentNeeded.stone <= 0 && currentNeeded.iron <= 0) {
             UI.InfoMessage('Alle benötigten Ressourcen bereits vorhanden (oder unterwegs)!', 2000);
@@ -363,7 +391,7 @@
         }
 
         // Lagerkapazitätsprüfung (verwendet den aktuellen, sich aktualisierenden currentTheoretical... Wert)
-        if (currentTheoreticalWood + currentNeeded.wood > WHCap || // Hier wurde initialNeeded durch currentNeeded ersetzt
+        if (currentTheoreticalWood + currentNeeded.wood > WHCap ||
             currentTheoreticalStone + currentNeeded.stone > WHCap ||
             currentTheoreticalIron + currentNeeded.iron > WHCap) {
              UI.ErrorMessage("Nicht genug Lagerplatz im Ziel-Dorf für die benötigten Ressourcen (bereits angeforderte Ressourcen berücksichtigt)!", 4000);
