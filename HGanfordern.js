@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.23)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.24)
 // @namespace     http://tampermonkey.net/
-// @version       2.23 // Fix: Prod-Modus: Eingehende Transporte werden nach JEDER Sendung neu abgerufen, um Überlieferung zu vermeiden.
+// @version       2.24 // Fix: Robusteres Senden im Prod-Modus mit Retries und besserem Error-Handling.
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,11 @@
     // Standardmäßig ist es false, wenn die Variable nicht gesetzt ist.
     const DEBUG_MODE = window.HGA_DEBUG === true;
 
-    const SCRIPT_VERSION = '2.23' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.24' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+
+    // Konfiguration für Wiederholungsversuche im Produktivmodus
+    const MAX_RETRIES = 3; // Maximale Anzahl der Wiederholungsversuche pro Sendung
+    const RETRY_DELAY_MS = 1000; // Verzögerung zwischen Wiederholungsversuchen in Millisekunden
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -93,8 +97,8 @@
                 // Parsed-Werte sicher in scriptSettings übernehmen, mit Fallback auf Standardwerte
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
-                scriptSettings.maxSendStone = (parsed.maxSendStone !== undefined && !isNaN(parseInt(parsed.maxStone))) ? parseInt(parsed.maxStone) : (parseInt(parsed.maxSendStone) || 0);
-                scriptSettings.maxSendIron = (parsed.maxSendIron !== undefined && !isNaN(parseInt(parsed.maxIron))) ? parseInt(parsed.maxIron) : (parseInt(parsed.maxSendIron) || 0);
+                scriptSettings.maxSendStone = (parsed.maxStone !== undefined && !isNaN(parseInt(parsed.maxStone))) ? parseInt(parsed.maxStone) : (parseInt(parsed.maxSendStone) || 0);
+                scriptSettings.maxSendIron = (parsed.maxIron !== undefined && !isNaN(parseInt(parsed.maxIron))) ? parseInt(parsed.maxIron) : (parseInt(parsed.maxSendIron) || 0);
 
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
                 scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
@@ -262,7 +266,7 @@
                      $containerElement = $incomingTextElement.parent(); // Fallback zum direkten Elternteil
                 }
                  if ($containerElement.length === 0) {
-                    logDebug("Marktplatz: 'Eintreffend:' Text gefunden, aber kein passender TR oder Parent für Ressourcen-Spans.");
+                    logDebug("Marktplatz: 'Eintreffend:' Text gefunden, aber kein passender TR oder Parent für Ressourcen-Spans. Versuche generisches Suchen.");
                     // Versuche, Icons direkt auf der Marktplatz-Seite zu finden, wenn kein spezifischer Container gefunden wurde
                     // Dies ist eine Fallback-Strategie, falls das Layout anders ist
                     const allSpans = $marketPage.find('span.nowrap');
@@ -347,7 +351,7 @@
             logDebug(`DEBUG-Modus (simuliert): Theoretische Ressourcen: H:${currentTheoreticalWood}, L:${currentTheoreticalStone}, E:${currentTheoreticalIron}. Lagerkapazität: ${WHCap}`);
             logDebug(`DEBUG-Modus (simuliert): Eingehende Transporte (simuliert): H:${actualIncomingWood}, L:${actualIncomingStone}, E:${actualIncomingIron}.`);
             // Hier zusätzlich die echten Werte loggen, die zuletzt vom Server kamen
-            logDebug(`DEBUG-Modus (Vergleich): Eingehende Transporte (echt vom Server zuletzt): H:${lastActualIncomingWood}, L:${lastActualIncomingStone}, E:${lastActualIncomingIron}.`);
+            logDebug(`DEBUG-Modus (Vergleich): Echte eingehende Transporte vom Server (zuletzt abgerufen): H:${lastActualIncomingWood}, L:${lastActualIncomingStone}, E:${lastActualIncomingIron}.`);
 
             if (!suppressInfoMessage) {
                 if (actualIncomingWood + actualIncomingStone + actualIncomingIron > 0) {
@@ -624,61 +628,69 @@
                     currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
 
                 } else { // PRODUKTIV MODUS
-                    try {
-                        const response = await TribalWars.post("market", {
-                            "ajaxaction" : "map_send",
-                            "village" : source.id
-                        }, {
-                            "target_id" : game_data.village.id,
-                            "wood" : payload.wood,
-                            "stone" : payload.stone,
-                            "iron" : payload.iron,
-                        });
+                    let sendSuccessful = false;
+                    for (let retryCount = 0; retryCount < MAX_RETRIES && !sendSuccessful; retryCount++) {
+                        logDebug(`PRODUKTIV-Modus: Sende Ressourcen von ${source.name}. Versuch ${retryCount + 1}/${MAX_RETRIES}.`);
+                        UI.InfoMessage(`Sende Ressourcen von ${source.name}. Versuch ${retryCount + 1}/${MAX_RETRIES}...`, 1500);
 
-                        const isSuccess = response && (response.success === true || (typeof response.message === 'string' && response.message.includes('Rohstoffe erfolgreich verschickt')));
+                        // Füge eine Pause vor dem Senden hinzu, um den Server nicht zu überlasten
+                        await new Promise(resolve => setTimeout(resolve, (retryCount === 0 ? 300 : RETRY_DELAY_MS))); // Erste Sendung 300ms, Retries mit RETRY_DELAY_MS
 
-                        if (isSuccess) {
-                            let transferredWood = response.resources ? (response.resources.wood || 0) : payload.wood;
-                            let transferredStone = response.resources ? (response.resources.stone || 0) : payload.stone;
-                            let transferredIron = response.resources ? (response.resources.iron || 0) : payload.iron;
+                        try {
+                            const response = await TribalWars.post("market", {
+                                "ajaxaction" : "map_send",
+                                "village" : source.id
+                            }, {
+                                "target_id" : game_data.village.id,
+                                "wood" : payload.wood,
+                                "stone" : payload.stone,
+                                "iron" : payload.iron,
+                            });
 
-                            if (transferredWood > 0 || transferredStone > 0 || transferredIron > 0) {
-                                UI.SuccessMessage(`Ressourcen von ${source.name} gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}`, 3000);
-                                console.log(`Ressourcen erfolgreich gesendet von ${source.name}. Übertragen: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Antwort:`, response);
+                            // Prüfe die Antwort auf Erfolg. Manchmal ist `success` false, aber die Nachricht ist trotzdem positiv.
+                            const isSuccess = response && (response.success === true || (typeof response.message === 'string' && response.message.includes('Rohstoffe erfolgreich verschickt')));
 
-                                totalSentPotential.wood += transferredWood;
-                                totalSentPotential.stone += transferredStone;
-                                totalSentPotential.iron += transferredIron;
+                            if (isSuccess) {
+                                let transferredWood = response.resources ? (response.resources.wood || 0) : payload.wood;
+                                let transferredStone = response.resources ? (response.resources.stone || 0) : payload.stone;
+                                let transferredIron = response.resources ? (response.resources.iron || 0) : payload.iron;
 
-                                // source (lokale Kopie) wurde bereits oben aktualisiert
-                                // sourcesToUpdate (globale Referenz) wurde bereits oben gesetzt
+                                if (transferredWood > 0 || transferredStone > 0 || transferredIron > 0) {
+                                    UI.SuccessMessage(`Ressourcen von ${source.name} gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}`, 3000);
+                                    console.log(`Ressourcen erfolgreich gesendet von ${source.name}. Übertragen: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Antwort:`, response);
 
-                                // *** WICHTIGE NEUE LOGIK FÜR PRODUKTIV-MODUS ***
-                                // Nach jeder erfolgreichen Sendung die eingehenden Transporte vom Server neu abrufen.
-                                // Dies stellt sicher, dass der Gesamtbedarf des Zieldorfes immer aktuell ist.
-                                logDebug("PRODUKTIV-Modus: Erfolgreich gesendet. Aktualisiere eingehende Transporte vom Server.");
-                                await initializeCurrentResources(true); // `true` um die Info-Nachricht zu unterdrücken
-                                // Aktualisiere den *verbleibenden Bedarf* basierend auf den JETZT AKTUELLEN theoretischen Ressourcen
-                                currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
-                                currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
-                                currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
+                                    totalSentPotential.wood += transferredWood;
+                                    totalSentPotential.stone += transferredStone;
+                                    totalSentPotential.iron += transferredIron;
+
+                                    sendSuccessful = true; // Markiere als erfolgreich, um Schleife zu beenden
+                                    logDebug("Sendung erfolgreich. Aktualisiere eingehende Transporte vom Server für genauen Bedarf.");
+                                    await initializeCurrentResources(true); // `true` um die Info-Nachricht zu unterdrücken
+                                    // Aktualisiere den *verbleibenden Bedarf* basierend auf den JETZT AKTUELLEN theoretischen Ressourcen
+                                    currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
+                                    currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
+                                    currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
+
+                                } else {
+                                    logDebug(`Server antwortete mit Erfolg, aber 0 Ressourcen gesendet von ${source.name}. Wahrscheinlich wurde der Bedarf im letzten Moment gedeckt oder zu wenig verfügbar.`);
+                                    sendSuccessful = true; // Betrachte dies als Erfolg, um nicht unnötig zu wiederholen
+                                }
 
                             } else {
-                                logDebug(`Server antwortete mit Erfolg, aber 0 Ressourcen gesendet von ${source.name}. Wahrscheinlich wurde der Bedarf im letzten Moment gedeckt oder zu wenig verfügbar.`);
+                                let errorMessage = response ? (response.message || 'Unbekannter Fehler') : 'Serverantwort war leer oder ungültig.';
+                                UI.ErrorMessage(`FEHLER! Sendung von ${source.name} fehlgeschlagen (Versuch ${retryCount + 1}): ${errorMessage}`, 5000);
+                                logError(`FEHLER beim Senden von Ressourcen von ${source.name}. Versuch ${retryCount + 1}. Antwort:`, response);
                             }
-
-                        } else {
-                            let errorMessage = response ? (response.message || 'Unbekannter Fehler') : 'Serverantwort war leer oder ungültig.';
-                            UI.ErrorMessage(`Fehler beim Senden von Ressourcen von ${source.name}: ${errorMessage}`, 5000);
-                            logError(`Fehler beim Senden von Ressourcen von ${source.name}. Antwort:`, response);
+                        } catch (jqXHR) {
+                            UI.ErrorMessage(`NETZWERKFEHLER! Sendung von ${source.name} fehlgeschlagen (Versuch ${retryCount + 1})`, 5000);
+                            logError(`NETZWERKFEHLER beim Senden von ${source.name}. Versuch ${retryCount + 1}. jqXHR/Error:`, jqXHR);
                         }
-                    } catch (jqXHR) {
-                        UI.ErrorMessage(`Netzwerkfehler oder unerwartete Antwort beim Senden von ${source.name}`, 5000);
-                        logError(`Netzwerkfehler oder unerwartete Antwort beim Senden von ${source.name}. jqXHR/Error:`, jqXHR);
+                    } // Ende der Wiederholungsschleife
+                    if (!sendSuccessful) {
+                        logWarn(`Alle ${MAX_RETRIES} Versuche zum Senden von ${source.name} fehlgeschlagen. Überspringe dieses Dorf für diese Anforderung.`);
+                        UI.ErrorMessage(`Alle Versuche von ${source.name} fehlgeschlagen. Bitte manuell prüfen!`, 5000);
                     }
                 }
-                // --- VERZÖGERUNG HINZUFÜGEN (auch im Debug-Modus sinnvoll für realistische Simulation) ---
-                await new Promise(resolve => setTimeout(resolve, 300)); // 300 Millisekunden Pause zwischen Sendungen
             }
         }
 
