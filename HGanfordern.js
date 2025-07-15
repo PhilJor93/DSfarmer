@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.9)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.12)
 // @namespace     http://tampermonkey.net/
-// @version       2.9 // Fix: Verbesserte Erkennung eingehender Transporte (span.nowrap)
+// @version       2.12 // Fix: Präzise Erkennung eingehender Transporte im Marktplatz-TH
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.9' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.12' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -86,9 +86,8 @@
                 // Parsed-Werte sicher in scriptSettings übernehmen, mit Fallback auf Standardwerte
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
-                // KORREKTUR HIER: maxSendStone
                 scriptSettings.maxSendStone = (parsed.maxSendStone !== undefined && !isNaN(parseInt(parsed.maxSendStone))) ? parseInt(parsed.maxSendStone) : (parseInt(parsed.maxStone) || 0);
-                scriptSettings.maxSendIron = (parsed.maxSendIron !== undefined && !isNaN(parseInt(parsed.maxSendIron))) ? parseInt(parsed.maxIron) : 0;
+                scriptSettings.maxSendIron = (parsed.maxSendIron !== undefined && !isNaN(parseInt(parsed.maxIron))) ? parseInt(parsed.maxIron) : 0;
 
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
                 scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
@@ -238,57 +237,61 @@
         currentTheoreticalIron = game_data.village.iron;
         WHCap = game_data.village.storage_max;
 
-        // Setze die tatsächlichen eingehenden Transporte zurück für jede Initialisierung
         actualIncomingWood = 0;
         actualIncomingStone = 0;
         actualIncomingIron = 0;
 
         logDebug(`Aktuelle Ressourcen (Start - ohne eingehende): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}. Lagerkapazität: ${WHCap}`);
 
+        let incomingWoodForTheoretical = 0;
+        let incomingStoneForTheoretical = 0;
+        let incomingIronForTheoretical = 0;
+
+        // --- Fokus nur auf die Marktplatz-Seite ---
         try {
             const marketPage = await $.get(game_data.link_base_pure + "market");
             const $marketPage = $(marketPage);
-            let incomingWoodForTheoretical = 0;
-            let incomingStoneForTheoretical = 0;
-            let incomingIronForTheoretical = 0;
 
-            // Finde die Tabelle der eingehenden Transporte
-            const $incomingTransportsTable = $marketPage.find('h4:contains("Eigene Transporte") + .vis, h4:contains("Eingehende Transporte") + .vis');
+            // NEUER Selektor: Direkt die TH-Zelle finden, die "Eintreffend: " enthält und die Ressourcen-Icons hat
+            const $incomingTh = $marketPage.find('table.vis th:contains("Eintreffend:")');
 
-            if ($incomingTransportsTable.length > 0) {
-                $incomingTransportsTable.find('tr.row_a, tr.row_b').each(function() {
-                    const $row = $(this);
-                    // Finde das nowrap-span, das die Ressourcenmenge enthält
-                    const woodSpan = $row.find('span.nowrap:has(span.icon.header.wood)');
-                    const stoneSpan = $row.find('span.nowrap:has(span.icon.header.stone)');
-                    const ironSpan = $row.find('span.nowrap:has(span.icon.header.iron)');
+            if ($incomingTh.length > 0) {
+                logDebug("Marktplatz: 'Eintreffend:' TH-Zelle gefunden.", $incomingTh);
 
-                    const currentIncomingWood = parseResourceAmount(woodSpan.text());
-                    const currentIncomingStone = parseResourceAmount(stoneSpan.text());
-                    const currentIncomingIron = parseResourceAmount(ironSpan.text());
+                const woodSpan = $incomingTh.find('span.nowrap:has(span.icon.header.wood)');
+                const stoneSpan = $incomingTh.find('span.nowrap:has(span.icon.header.stone)');
+                const ironSpan = $incomingTh.find('span.nowrap:has(span.icon.header.iron)');
 
-                    incomingWoodForTheoretical += currentIncomingWood;
-                    incomingStoneForTheoretical += currentIncomingStone;
-                    incomingIronForTheoretical += currentIncomingIron;
+                const currentIncomingWood = parseResourceAmount(woodSpan.text());
+                const currentIncomingStone = parseResourceAmount(stoneSpan.text());
+                const currentIncomingIron = parseResourceAmount(ironSpan.text());
 
-                    // Speichere die echten eingehenden Transporte separat (für Debug-Anzeige)
-                    actualIncomingWood += currentIncomingWood;
-                    actualIncomingStone += currentIncomingStone;
-                    actualIncomingIron += currentIncomingIron;
-                });
-                logDebug(`Eingehende Transporte gefunden: Holz: ${incomingWoodForTheoretical}, Lehm: ${incomingStoneForTheoretical}, Eisen: ${incomingIronForTheoretical}`);
+                incomingWoodForTheoretical += currentIncomingWood;
+                incomingStoneForTheoretical += currentIncomingStone;
+                incomingIronForTheoretical += currentIncomingIron;
 
-                currentTheoreticalWood += incomingWoodForTheoretical;
-                currentTheoreticalStone += incomingStoneForTheoretical;
-                currentTheoreticalIron += incomingIronForTheoretical;
+                actualIncomingWood += currentIncomingWood;
+                actualIncomingStone += currentIncomingStone;
+                actualIncomingIron += currentIncomingIron;
 
-                logDebug(`Aktuelle Ressourcen (aktualisiert mit eingehenden): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
+                logDebug(`Marktplatz: Eingehende Transporte erfasst: Holz: ${incomingWoodForTheoretical}, Lehm: ${incomingStoneForTheoretical}, Eisen: ${incomingIronForTheoretical}`);
             } else {
-                logDebug("Keine eingehenden Transporte gefunden oder Tabelle nicht erkannt.");
+                logDebug("Marktplatz: Keine 'Eintreffend:' TH-Zelle mit Ressourcen gefunden.");
             }
         } catch (e) {
             logError("Fehler beim Abrufen der Marktplatz-Seite für eingehende Transporte:", e);
             UI.ErrorMessage('Fehler beim Abrufen eingehender Transporte. Bitte manuell prüfen.', 3000);
+        }
+
+        currentTheoreticalWood += incomingWoodForTheoretical;
+        currentTheoreticalStone += incomingStoneForTheoretical;
+        currentTheoreticalIron += incomingIronForTheoretical;
+
+        logDebug(`Aktuelle Ressourcen (aktualisiert mit allen eingehenden): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
+        if (actualIncomingWood + actualIncomingStone + actualIncomingIron > 0) {
+            UI.InfoMessage(`Eingehende Transporte (gesamt): H:${actualIncomingWood}, L:${actualIncomingStone}, E:${actualIncomingIron}.`, 3000);
+        } else {
+             UI.InfoMessage(`Keine eingehenden Transporte gefunden.`, 3000);
         }
     }
 
