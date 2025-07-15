@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.15)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.16)
 // @namespace     http://tampermonkey.net/
-// @version       2.15 // Fix: Korrigiertes Ressourcen-Parsing für eingehende Transporte
+// @version       2.16 // Fix: Noch robusteres Ressourcen-Parsing und zusätzliche Debug-Infos
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.15' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.16' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -213,15 +213,29 @@
 
     /**
      * Helferfunktion zum Parsen von Ressourcenmengen aus Text,
-     * bereinigt Tausender-Trennzeichen.
+     * bereinigt alle Nicht-Ziffern.
      */
     function parseResourceAmount(text) {
         if (!text) return 0;
-        // Entfernt alle Nicht-Ziffern (inkl. Leerzeichen, Buchstaben, Punkte, Kommas etc.)
-        // WICHTIG: Hier wurde der Regex von `/[^\d\.]/g` zu `/\D/g` geändert.
-        // `\D` matcht alles, was KEINE Ziffer ist.
-        const cleanedText = text.replace(/\D/g, "");
-        return parseInt(cleanedText);
+
+        // Zusätzlicher Debug-Output für den Roh-Text und den bereinigten Text
+        logDebug(`parseResourceAmount: Roh-Text: "${text}"`);
+
+        // Entfernt alle Nicht-Ziffern, auch Tausendertrennzeichen (Punkte, Kommas, Leerzeichen, geschützte Leerzeichen)
+        // Verwenden Sie eine allgemeinere Ersetzung für alle Arten von Leerzeichen und nicht-numerischen Zeichen
+        let cleanedText = text.replace(/[^0-9]/g, '');
+
+        logDebug(`parseResourceAmount: Bereinigter Text: "${cleanedText}"`);
+
+        // Sicherstellen, dass der Text nicht leer ist, bevor geparst wird
+        if (cleanedText === "") {
+            return 0;
+        }
+
+        const parsedValue = parseInt(cleanedText, 10); // explizit Basis 10 angeben
+        logDebug(`parseResourceAmount: Geparsedter Wert: ${parsedValue}`);
+
+        return isNaN(parsedValue) ? 0 : parsedValue;
     }
 
 
@@ -252,37 +266,32 @@
             const marketPage = await $.get(game_data.link_base_pure + "market");
             const $marketPage = $(marketPage);
 
-            // NEUER Selektor: Finde das Element, das den Text "Eintreffend:" enthält, und seine Geschwister/Nachbarn
-            // Wir suchen nach einem Textknoten "Eintreffend:", dann greifen wir auf das Elternelement zu
-            // und suchen darin nach den nowrap-Spans mit den Ressourcen-Icons.
+            // Selektor: Finde das Element, das den Text "Eintreffend:" enthält, und seine Geschwister/Nachbarn
             const $incomingTextElement = $marketPage.find('*:contains("Eintreffend:")').filter(function() {
-                // Filtere, um sicherzustellen, dass es sich um einen direkten Textknoten oder ein sehr nahes Element handelt
                 return $(this).text().includes("Eintreffend:");
             }).first();
 
             if ($incomingTextElement.length > 0) {
-                // Das Element, das "Eintreffend:" enthält, ist gefunden.
-                // Jetzt suchen wir die Ressourcen-Spans in seiner Nähe, z.B. in seinem Elternelement oder direkt danach.
-                // Basierend auf dem Pastebin-Code ist es der direkte Textknoten in einer `<th>` oder `div` oder `p`.
-                // Wir suchen die `span.nowrap`-Elemente direkt innerhalb des übergeordneten Elements,
-                // das den "Eintreffend:"-Text enthält.
-
                 let $containerElement;
                 if ($incomingTextElement.is('th') || $incomingTextElement.is('div') || $incomingTextElement.is('p')) {
                     $containerElement = $incomingTextElement;
                 } else {
-                    $containerElement = $incomingTextElement.closest('th, div, p'); // Oder ein anderer passender Container
+                    $containerElement = $incomingTextElement.closest('th, div, p');
                     if ($containerElement.length === 0) {
-                        $containerElement = $incomingTextElement.parent(); // Fallback zum direkten Elternelement
+                        $containerElement = $incomingTextElement.parent();
                     }
                 }
 
                 if ($containerElement.length > 0) {
-                     logDebug("Marktplatz: 'Eintreffend:' Text gefunden im Container:", $containerElement[0].outerHTML);
+                    logDebug("Marktplatz: 'Eintreffend:' Text gefunden im Container. Container HTML:", $containerElement[0].outerHTML);
 
                     const woodSpan = $containerElement.find('span.nowrap:has(span.icon.header.wood)');
                     const stoneSpan = $containerElement.find('span.nowrap:has(span.icon.header.stone)');
                     const ironSpan = $containerElement.find('span.nowrap:has(span.icon.header.iron)');
+
+                    logDebug(`Roh-Text für Holz-Span: "${woodSpan.text()}"`);
+                    logDebug(`Roh-Text für Lehm-Span: "${stoneSpan.text()}"`);
+                    logDebug(`Roh-Text für Eisen-Span: "${ironSpan.text()}"`);
 
                     const currentIncomingWood = parseResourceAmount(woodSpan.text());
                     const currentIncomingStone = parseResourceAmount(stoneSpan.text());
@@ -298,7 +307,7 @@
 
                     logDebug(`Marktplatz: Eingehende Transporte erfasst: Holz: ${incomingWoodForTheoretical}, Lehm: ${incomingStoneForTheoretical}, Eisen: ${incomingIronForTheoretical}`);
                 } else {
-                     logDebug("Marktplatz: 'Eintreffend:' Text gefunden, aber kein passender Container für Ressourcen-Spans.");
+                    logDebug("Marktplatz: 'Eintreffend:' Text gefunden, aber kein passender Container für Ressourcen-Spans.");
                 }
             } else {
                 logDebug("Marktplatz: 'Eintreffend:' Text nicht gefunden.");
