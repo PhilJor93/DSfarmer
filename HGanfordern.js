@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.12)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.13)
 // @namespace     http://tampermonkey.net/
-// @version       2.12 // Fix: Präzise Erkennung eingehender Transporte im Marktplatz-TH
+// @version       2.13 // Fix: Direkte ID-Erkennung für eingehende Transporte im Marktplatz
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.12' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.13' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -252,15 +252,15 @@
             const marketPage = await $.get(game_data.link_base_pure + "market");
             const $marketPage = $(marketPage);
 
-            // NEUER Selektor: Direkt die TH-Zelle finden, die "Eintreffend: " enthält und die Ressourcen-Icons hat
-            const $incomingTh = $marketPage.find('table.vis th:contains("Eintreffend:")');
+            // NEUER Selektor: Finde das div mit der ID 'market_incoming_transports'
+            const $incomingTransportsDiv = $marketPage.find('#market_incoming_transports');
 
-            if ($incomingTh.length > 0) {
-                logDebug("Marktplatz: 'Eintreffend:' TH-Zelle gefunden.", $incomingTh);
+            if ($incomingTransportsDiv.length > 0) {
+                logDebug("Marktplatz: Div 'market_incoming_transports' gefunden.", $incomingTransportsDiv);
 
-                const woodSpan = $incomingTh.find('span.nowrap:has(span.icon.header.wood)');
-                const stoneSpan = $incomingTh.find('span.nowrap:has(span.icon.header.stone)');
-                const ironSpan = $incomingTh.find('span.nowrap:has(span.icon.header.iron)');
+                const woodSpan = $incomingTransportsDiv.find('span.nowrap:has(span.icon.header.wood)');
+                const stoneSpan = $incomingTransportsDiv.find('span.nowrap:has(span.icon.header.stone)');
+                const ironSpan = $incomingTransportsDiv.find('span.nowrap:has(span.icon.header.iron)');
 
                 const currentIncomingWood = parseResourceAmount(woodSpan.text());
                 const currentIncomingStone = parseResourceAmount(stoneSpan.text());
@@ -276,7 +276,7 @@
 
                 logDebug(`Marktplatz: Eingehende Transporte erfasst: Holz: ${incomingWoodForTheoretical}, Lehm: ${incomingStoneForTheoretical}, Eisen: ${incomingIronForTheoretical}`);
             } else {
-                logDebug("Marktplatz: Keine 'Eintreffend:' TH-Zelle mit Ressourcen gefunden.");
+                logDebug("Marktplatz: Div 'market_incoming_transports' nicht gefunden.");
             }
         } catch (e) {
             logError("Fehler beim Abrufen der Marktplatz-Seite für eingehende Transporte:", e);
