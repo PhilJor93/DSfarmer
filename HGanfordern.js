@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.1.8)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.1.9)
 // @namespace     http://tampermonkey.net/
-// @version       1.8 // Feature: Umschaltbarer Debug-Modus
+// @version       1.9 // Feature: Debug-Modus zeigt Restbestände im Quelldorf
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '1.8' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '1.9' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -409,37 +409,45 @@
 
             // 3. Phase: Senden (simuliert oder tatsächlich)
             if (payload.wood > 0 || payload.stone > 0 || payload.iron > 0) {
+                // Speichere die aktuellen Ressourcen des Quelldorfes VOR der simulierten Abzug,
+                // um sie in der Log-Meldung anzuzeigen.
+                const initialSourceWood = source.wood;
+                const initialSourceStone = source.stone;
+                const initialSourceIron = source.iron;
+                const initialSourceMerchants = source.merchants;
+
+                // Aktualisiere den lokalen Zustand des Quelldorfes FÜR DIE NÄCHSTEN SCHRITTE IN DIESER ANFORDERUNG
+                source.wood -= payload.wood;
+                source.stone -= payload.stone;
+                source.iron -= payload.iron;
+                source.merchants -= merchantsNeededForSource;
+
+                // Speichere die Updates für das globale 'sources'-Array
+                sourcesToUpdate[source.id] = {
+                    wood: source.wood,
+                    stone: source.stone,
+                    iron: source.iron,
+                    merchants: source.merchants
+                };
+
                 if (DEBUG_MODE) {
-                    logDebug(`(SIMULIERT): Ressourcenanforderung von Dorf ${source.name} nach ${game_data.village.name} für Gebäude ${buildingNr}: H:${payload.wood} L:${payload.stone} E:${payload.iron}. Benötigt Händler: ${merchantsNeededForSource}.`);
+                    logDebug(
+                        `(SIMULIERT): Ressourcenanforderung von Dorf ${source.name} nach ${game_data.village.name} für Gebäude ${buildingNr}: ` +
+                        `H:${payload.wood} L:${payload.stone} E:${payload.iron}. Benötigt Händler: ${merchantsNeededForSource}. ` +
+                        `Bestand vorher: H:${initialSourceWood} L:${initialSourceStone} E:${initialSourceIron}. ` +
+                        `Bestand nachher: H:${source.wood} L:${source.stone} E:${source.iron}. ` +
+                        `Händler vorher: ${initialSourceMerchants}. Händler nachher: ${source.merchants}.`
+                    );
                     UI.InfoMessage(`(SIMULIERT) Ressourcen von ${source.name} angefordert: H:${payload.wood} L:${payload.stone} E:${payload.iron}`, 3000);
 
-                    // Im Debug-Modus simulieren wir den Erfolg und aktualisieren die Zustände
-                    let transferredWood = payload.wood;
-                    let transferredStone = payload.stone;
-                    let transferredIron = payload.iron;
+                    // Im Debug-Modus simulieren wir den Erfolg und aktualisieren die theoretischen Gesamtressourcen
+                    totalSentPotential.wood += payload.wood;
+                    totalSentPotential.stone += payload.stone;
+                    totalSentPotential.iron += payload.iron;
 
-                    totalSentPotential.wood += transferredWood;
-                    totalSentPotential.stone += transferredStone;
-                    totalSentPotential.iron += transferredIron;
-
-                    // Aktualisiere den aktuellen Bedarf basierend auf dem, was simuliert gesendet wurde
-                    currentNeeded.wood = Math.max(0, currentNeeded.wood - transferredWood);
-                    currentNeeded.stone = Math.max(0, currentNeeded.stone - transferredStone);
-                    currentNeeded.iron = Math.max(0, currentNeeded.iron - transferredIron);
-
-                    // Aktualisiere den lokalen Zustand des Quelldorfes für nachfolgende Iterationen in DIESER Anforderung
-                    source.wood -= transferredWood;
-                    source.stone -= transferredStone;
-                    source.iron -= transferredIron;
-                    source.merchants -= merchantsNeededForSource; // Reduziere Händler unabhängig von tatsächlicher Sendemenge, da sie unterwegs wären
-
-                    // Speichere die Updates für das globale 'sources'-Array
-                    sourcesToUpdate[source.id] = {
-                        wood: source.wood,
-                        stone: source.stone,
-                        iron: source.iron,
-                        merchants: source.merchants
-                    };
+                    currentNeeded.wood = Math.max(0, currentNeeded.wood - payload.wood);
+                    currentNeeded.stone = Math.max(0, currentNeeded.stone - payload.stone);
+                    currentNeeded.iron = Math.max(0, currentNeeded.iron - payload.iron);
 
                 } else { // PRODUKTIV MODUS
                     try {
@@ -472,17 +480,8 @@
                                 currentNeeded.stone = Math.max(0, currentNeeded.stone - transferredStone);
                                 currentNeeded.iron = Math.max(0, currentNeeded.iron - transferredIron);
 
-                                source.wood -= transferredWood;
-                                source.stone -= transferredStone;
-                                source.iron -= transferredIron;
-                                source.merchants -= merchantsNeededForSource;
-
-                                sourcesToUpdate[source.id] = {
-                                    wood: source.wood,
-                                    stone: source.stone,
-                                    iron: source.iron,
-                                    merchants: source.merchants
-                                };
+                                // source (lokale Kopie) wurde bereits oben aktualisiert
+                                // sourcesToUpdate (globale Referenz) wurde bereits oben gesetzt
                             } else {
                                 logDebug(`Server antwortete mit Erfolg, aber 0 Ressourcen gesendet von ${source.name}. Wahrscheinlich wurde der Bedarf im letzten Moment gedeckt oder zu wenig verfügbar.`);
                             }
