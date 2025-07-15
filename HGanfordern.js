@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.24)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.25)
 // @namespace     http://tampermonkey.net/
-// @version       2.24 // Fix: Robusteres Senden im Prod-Modus mit Retries und besserem Error-Handling.
+// @version       2.25 // Fix: Entspanntere Erfolgserkennung der Serverantwort bei Ressourcenversand.
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     // Standardmäßig ist es false, wenn die Variable nicht gesetzt ist.
     const DEBUG_MODE = window.HGA_DEBUG === true;
 
-    const SCRIPT_VERSION = '2.24' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.25' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // Konfiguration für Wiederholungsversuche im Produktivmodus
     const MAX_RETRIES = 3; // Maximale Anzahl der Wiederholungsversuche pro Sendung
@@ -647,34 +647,32 @@
                                 "iron" : payload.iron,
                             });
 
-                            // Prüfe die Antwort auf Erfolg. Manchmal ist `success` false, aber die Nachricht ist trotzdem positiv.
-                            const isSuccess = response && (response.success === true || (typeof response.message === 'string' && response.message.includes('Rohstoffe erfolgreich verschickt')));
+                            // *** GEÄNDERTE ERFOLGSPRÜFUNG HIER ***
+                            // Betrachte es als Erfolg, wenn keine explizite Fehlermeldung vom Server kam.
+                            // Wenn response null/undefined ist ODER response.message ein String ist und "Fehler" enthält (oft bei ungültigen Anfragen)
+                            const isErrorResponse = !response || (typeof response.message === 'string' && response.message.includes('Fehler'));
+                            if (!isErrorResponse) {
+                                // Annahme: Sendung war erfolgreich oder zumindest nicht explizit fehlerhaft
+                                let transferredWood = response && response.resources ? (response.resources.wood || 0) : payload.wood;
+                                let transferredStone = response && response.resources ? (response.resources.stone || 0) : payload.stone;
+                                let transferredIron = response && response.resources ? (response.resources.iron || 0) : payload.iron;
 
-                            if (isSuccess) {
-                                let transferredWood = response.resources ? (response.resources.wood || 0) : payload.wood;
-                                let transferredStone = response.resources ? (response.resources.stone || 0) : payload.stone;
-                                let transferredIron = response.resources ? (response.resources.iron || 0) : payload.iron;
+                                // Wenn Ressourcen tatsächlich übertragen wurden oder payload > 0, aber response.resources 0 ist (z.B. bei Race Condition)
+                                // gehen wir davon aus, dass es gesendet wurde.
+                                UI.SuccessMessage(`Ressourcen von ${source.name} gesendet (wahrscheinlich): H:${payload.wood} L:${payload.stone} E:${payload.iron}`, 3000);
+                                console.log(`Ressourcen anscheinend erfolgreich gesendet von ${source.name}. Übertragene Menge aus Payload angenommen. Serverantwort:`, response);
 
-                                if (transferredWood > 0 || transferredStone > 0 || transferredIron > 0) {
-                                    UI.SuccessMessage(`Ressourcen von ${source.name} gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}`, 3000);
-                                    console.log(`Ressourcen erfolgreich gesendet von ${source.name}. Übertragen: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Antwort:`, response);
+                                totalSentPotential.wood += payload.wood; // Nutze payload, da response.resources unzuverlässig sein kann
+                                totalSentPotential.stone += payload.stone;
+                                totalSentPotential.iron += payload.iron;
 
-                                    totalSentPotential.wood += transferredWood;
-                                    totalSentPotential.stone += transferredStone;
-                                    totalSentPotential.iron += transferredIron;
-
-                                    sendSuccessful = true; // Markiere als erfolgreich, um Schleife zu beenden
-                                    logDebug("Sendung erfolgreich. Aktualisiere eingehende Transporte vom Server für genauen Bedarf.");
-                                    await initializeCurrentResources(true); // `true` um die Info-Nachricht zu unterdrücken
-                                    // Aktualisiere den *verbleibenden Bedarf* basierend auf den JETZT AKTUELLEN theoretischen Ressourcen
-                                    currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
-                                    currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
-                                    currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
-
-                                } else {
-                                    logDebug(`Server antwortete mit Erfolg, aber 0 Ressourcen gesendet von ${source.name}. Wahrscheinlich wurde der Bedarf im letzten Moment gedeckt oder zu wenig verfügbar.`);
-                                    sendSuccessful = true; // Betrachte dies als Erfolg, um nicht unnötig zu wiederholen
-                                }
+                                sendSuccessful = true; // Markiere als erfolgreich, um Schleife zu beenden
+                                logDebug("Sendung als erfolgreich angenommen. Aktualisiere eingehende Transporte vom Server für genauen Bedarf.");
+                                await initializeCurrentResources(true); // `true` um die Info-Nachricht zu unterdrücken
+                                // Aktualisiere den *verbleibenden Bedarf* basierend auf den JETZT AKTUELLEN theoretischen Ressourcen
+                                currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
+                                currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
+                                currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
 
                             } else {
                                 let errorMessage = response ? (response.message || 'Unbekannter Fehler') : 'Serverantwort war leer oder ungültig.';
@@ -687,7 +685,7 @@
                         }
                     } // Ende der Wiederholungsschleife
                     if (!sendSuccessful) {
-                        logWarn(`Alle ${MAX_RETRIES} Versuche zum Senden von ${source.name} fehlgeschlagen. Überspringe dieses Dorf für diese Anforderung.`);
+                        logWarn(`Alle ${MAX_RETRIES} Versuche zum Senden von ${source.name} fehlgeschlagen ODER expliziter Fehler vom Server. Überspringe dieses Dorf für diese Anforderung.`);
                         UI.ErrorMessage(`Alle Versuche von ${source.name} fehlgeschlagen. Bitte manuell prüfen!`, 5000);
                     }
                 }
@@ -731,7 +729,7 @@
             const originalSource = sources.find(s => s.id == sourceId);
             if (originalSource) {
                 originalSource.wood = sourcesToUpdate[sourceId].wood;
-                originalSource.stone = sourcesToUpdate[sourceId].stone;
+                originalSource.stone = sourcesToupdate[sourceId].stone;
                 originalSource.iron = sourcesToUpdate[sourceId].iron;
                 originalSource.merchants = sourcesToUpdate[sourceId].merchants;
                 logDebug(`Quelldorf ${originalSource.name} (ID: ${sourceId}) global aktualisiert` + (DEBUG_MODE ? ' (SIMULIERT)' : '') + `. Neue Werte: H:${originalSource.wood}, L:${originalSource.stone}, E:${originalSource.iron}, Händler: ${originalSource.merchants}`);
