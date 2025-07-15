@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.8)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.9)
 // @namespace     http://tampermonkey.net/
-// @version       2.8 // Fix: Korrigiertes maxSendStone Parsing
+// @version       2.9 // Fix: Verbesserte Erkennung eingehender Transporte (span.nowrap)
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.8' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.9' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -88,7 +88,7 @@
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
                 // KORREKTUR HIER: maxSendStone
                 scriptSettings.maxSendStone = (parsed.maxSendStone !== undefined && !isNaN(parseInt(parsed.maxSendStone))) ? parseInt(parsed.maxSendStone) : (parseInt(parsed.maxStone) || 0);
-                scriptSettings.maxSendIron = (parsed.maxSendIron !== undefined && !isNaN(parseInt(parsed.maxSendIron))) ? parseInt(parsed.maxSendIron) : (parseInt(parsed.maxIron) || 0);
+                scriptSettings.maxSendIron = (parsed.maxSendIron !== undefined && !isNaN(parseInt(parsed.maxSendIron))) ? parseInt(parsed.maxIron) : 0;
 
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
                 scriptSettings.minWood = (parsed.minWood !== undefined && !isNaN(parseInt(parsed.minWood))) ? parseInt(parsed.minWood) : 10000;
@@ -218,8 +218,9 @@
      */
     function parseResourceAmount(text) {
         if (!text) return 0;
-        // Entfernt alle Punkte oder Kommas (für Tausender-Trennzeichen)
-        const cleanedText = text.replace(/[\.,]/g, "");
+        // Entfernt alle Nicht-Ziffern außer dem Punkt (falls vorhanden) und dann den Punkt selbst
+        // Oder genauer: Entfernt alles, was keine Ziffer ist, und ersetzt dann den Punkt
+        const cleanedText = text.replace(/[^\d\.]/g, "").replace(/\./g, ""); // Entfernt alles außer Zahlen und Punkte, dann die Punkte
         const match = cleanedText.match(/(\d+)/);
         return match ? parseInt(match[1]) : 0;
     }
@@ -257,14 +258,14 @@
             if ($incomingTransportsTable.length > 0) {
                 $incomingTransportsTable.find('tr.row_a, tr.row_b').each(function() {
                     const $row = $(this);
-                    // Versuche, die Zelle mit dem Ressourcen-Icon zu finden und den Text daraus zu parsen
-                    const woodCell = $row.find('td:has(img[src*="wood.png"])');
-                    const stoneCell = $row.find('td:has(img[src*="stone.png"])');
-                    const ironCell = $row.find('td:has(img[src*="iron.png"])');
+                    // Finde das nowrap-span, das die Ressourcenmenge enthält
+                    const woodSpan = $row.find('span.nowrap:has(span.icon.header.wood)');
+                    const stoneSpan = $row.find('span.nowrap:has(span.icon.header.stone)');
+                    const ironSpan = $row.find('span.nowrap:has(span.icon.header.iron)');
 
-                    const currentIncomingWood = parseResourceAmount(woodCell.text());
-                    const currentIncomingStone = parseResourceAmount(stoneCell.text());
-                    const currentIncomingIron = parseResourceAmount(ironCell.text());
+                    const currentIncomingWood = parseResourceAmount(woodSpan.text());
+                    const currentIncomingStone = parseResourceAmount(stoneSpan.text());
+                    const currentIncomingIron = parseResourceAmount(ironSpan.text());
 
                     incomingWoodForTheoretical += currentIncomingWood;
                     incomingStoneForTheoretical += currentIncomingStone;
