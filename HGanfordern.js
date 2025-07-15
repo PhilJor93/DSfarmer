@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.17)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.19)
 // @namespace     http://tampermonkey.net/
-// @version       2.17 // Fix: Finales Korrektur des Ressourcen-Parsings für eingehende Transporte (regex)
+// @version       2.19 // Feature: Eingehende Transporte werden nach jeder Sendung (im Debug-Modus) oder initial (Prod-Modus) komplett neu abgerufen.
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.17' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.19' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -29,7 +29,7 @@
     var currentTheoreticalIron = 0;
     var WHCap = 0; // Maximale Lagerkapazität des aktuellen Dorfes
 
-    // Variablen für eingehende Transporte (nur zur Anzeige im Debug-Modus)
+    // Variablen für eingehende Transporte (werden bei jedem initializeCurrentResources neu gesetzt)
     var actualIncomingWood = 0;
     var actualIncomingStone = 0;
     var actualIncomingIron = 0;
@@ -202,7 +202,7 @@
                 saveSettings();
                 Dialog.close();
                 // Hier müssen wir auch die aktuellen Ressourcen neu initialisieren, da die Einstellungen geändert wurden
-                initializeCurrentResources().then(() => {
+                initializeCurrentResources(true).then(() => { // True, um eine Info-Nachricht zu unterdrücken
                     showSourceSelect(function() {
                         checkBuildings();
                     });
@@ -221,10 +221,6 @@
         logDebug(`parseResourceAmount: Roh-Text: "${text}"`);
 
         // Extrahiere die erste Gruppe von Ziffern, optional mit Punkten dazwischen.
-        // Das bedeutet: Finde eine Zahl, die Punkte als Tausendertrennzeichen haben kann.
-        // `\d+` matcht eine oder mehrere Ziffern.
-        // `(?:[.,]?\d+)*` matcht optional eine Gruppe, die mit einem Punkt oder Komma beginnt, gefolgt von Ziffern, null oder mehr Mal.
-        // Da wir nur die erste Zahl wollen, nutzen wir `match` und nehmen das erste Ergebnis.
         const match = text.match(/(\d{1,3}(?:[.,]\d{3})*|\d+)/);
 
         if (match && match[1]) {
@@ -232,7 +228,6 @@
             logDebug(`parseResourceAmount: Extrahierter Zahlen-String (mit möglichen Trennzeichen): "${extractedNumberString}"`);
 
             // Entferne alle Tausender-Trennzeichen (Punkte und Kommas) aus dem extrahierten String
-            // um eine saubere Zahl für parseInt zu erhalten.
             const cleanedText = extractedNumberString.replace(/[.,]/g, '');
 
             logDebug(`parseResourceAmount: Bereinigter Text (ohne Trennzeichen): "${cleanedText}"`);
@@ -252,30 +247,31 @@
      * Initialisiert die aktuellen (theoretischen) Ressourcen des Dorfes
      * unter Berücksichtigung der aktuellen Bestände und eingehender Transporte.
      * Speichert auch die echten eingehenden Transporte separat für den Debug-Modus.
+     * @param {boolean} suppressInfoMessage - Wenn true, wird die Info-Nachricht über eingehende Transporte unterdrückt.
      * @returns {Promise<void>} Ein Promise, das erfüllt wird, wenn die Ressourcen initialisiert sind.
      */
-    async function initializeCurrentResources() {
+    async function initializeCurrentResources(suppressInfoMessage = false) {
         currentTheoreticalWood = game_data.village.wood;
         currentTheoreticalStone = game_data.village.stone;
         currentTheoreticalIron = game_data.village.iron;
         WHCap = game_data.village.storage_max;
 
+        // actualIncoming... wird hier jedes Mal komplett neu vom Server geholt
         actualIncomingWood = 0;
         actualIncomingStone = 0;
         actualIncomingIron = 0;
 
         logDebug(`Aktuelle Ressourcen (Start - ohne eingehende): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}. Lagerkapazität: ${WHCap}`);
 
-        let incomingWoodForTheoretical = 0;
-        let incomingStoneForTheoretical = 0;
-        let incomingIronForTheoretical = 0;
+        let currentIncomingWood = 0;
+        let currentIncomingStone = 0;
+        let currentIncomingIron = 0;
 
         // --- Fokus nur auf die Marktplatz-Seite ---
         try {
             const marketPage = await $.get(game_data.link_base_pure + "market");
             const $marketPage = $(marketPage);
 
-            // Selektor: Finde das Element, das den Text "Eintreffend:" enthält, und seine Geschwister/Nachbarn
             const $incomingTextElement = $marketPage.find('*:contains("Eintreffend:")').filter(function() {
                 return $(this).text().includes("Eintreffend:");
             }).first();
@@ -302,19 +298,15 @@
                     logDebug(`Roh-Text für Lehm-Span: "${stoneSpan.text()}"`);
                     logDebug(`Roh-Text für Eisen-Span: "${ironSpan.text()}"`);
 
-                    const currentIncomingWood = parseResourceAmount(woodSpan.text());
-                    const currentIncomingStone = parseResourceAmount(stoneSpan.text());
-                    const currentIncomingIron = parseResourceAmount(ironSpan.text());
+                    currentIncomingWood = parseResourceAmount(woodSpan.text());
+                    currentIncomingStone = parseResourceAmount(stoneSpan.text());
+                    currentIncomingIron = parseResourceAmount(ironSpan.text());
 
-                    incomingWoodForTheoretical += currentIncomingWood;
-                    incomingStoneForTheoretical += currentIncomingStone;
-                    incomingIronForTheoretical += currentIncomingIron;
+                    actualIncomingWood = currentIncomingWood; // Setze direkt, da dies die ECHTE Zahl ist
+                    actualIncomingStone = currentIncomingStone;
+                    actualIncomingIron = currentIncomingIron;
 
-                    actualIncomingWood += currentIncomingWood;
-                    actualIncomingStone += currentIncomingStone;
-                    actualIncomingIron += currentIncomingIron;
-
-                    logDebug(`Marktplatz: Eingehende Transporte erfasst: Holz: ${incomingWoodForTheoretical}, Lehm: ${incomingStoneForTheoretical}, Eisen: ${incomingIronForTheoretical}`);
+                    logDebug(`Marktplatz: Eingehende Transporte erfasst: Holz: ${actualIncomingWood}, Lehm: ${actualIncomingStone}, Eisen: ${actualIncomingIron}`);
                 } else {
                     logDebug("Marktplatz: 'Eintreffend:' Text gefunden, aber kein passender Container für Ressourcen-Spans.");
                 }
@@ -326,15 +318,17 @@
             UI.ErrorMessage('Fehler beim Abrufen eingehender Transporte. Bitte manuell prüfen.', 3000);
         }
 
-        currentTheoreticalWood += incomingWoodForTheoretical;
-        currentTheoreticalStone += incomingStoneForTheoretical;
-        currentTheoreticalIron += incomingIronForTheoretical;
+        currentTheoreticalWood += actualIncomingWood;
+        currentTheoreticalStone += actualIncomingStone;
+        currentTheoreticalIron += actualIncomingIron;
 
-        logDebug(`Aktuelle Ressourcen (aktualisiert mit allen eingehenden): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
-        if (actualIncomingWood + actualIncomingStone + actualIncomingIron > 0) {
-            UI.InfoMessage(`Eingehende Transporte (gesamt): H:${actualIncomingWood}, L:${actualIncomingStone}, E:${actualIncomingIron}.`, 3000);
-        } else {
-             UI.InfoMessage(`Keine eingehenden Transporte gefunden.`, 3000);
+        logDebug(`Aktuelle Ressourcen (aktualisiert mit allen ECHT eingehenden): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
+        if (!suppressInfoMessage) {
+            if (actualIncomingWood + actualIncomingStone + actualIncomingIron > 0) {
+                UI.InfoMessage(`Eingehende Transporte (aktuell): H:${actualIncomingWood}, L:${actualIncomingStone}, E:${actualIncomingIron}.`, 3000);
+            } else {
+                 UI.InfoMessage(`Keine eingehenden Transporte gefunden.`, 3000);
+            }
         }
     }
 
@@ -370,13 +364,11 @@
 
         // Einstellungen laden und Ressourcen initialisieren
         if (!loadSettings()) {
-            // Wenn keine Einstellungen geladen werden konnten, initialisiere trotzdem Ressourcen
             initializeCurrentResources().then(() => {
                 openSettingsDialog(); // Öffne Dialog, um Einstellungen vornehmen zu lassen
             });
         } else {
             initializeCurrentResources().then(() => {
-                // Quellen laden und Gebäude prüfen, nachdem Ressourcen initialisiert sind
                 showSourceSelect(function() {
                     checkBuildings();
                 });
@@ -425,18 +417,19 @@
     window.requestRes = async function(buildingNr) { // window. zur globalen Verfügbarkeit, async für await
         logDebug(`--- Anforderung für Gebäude ${buildingNr} gestartet ---`);
 
-        // Im Debug-Modus zusätzliche Infos ausgeben
-        if (DEBUG_MODE) {
-            logDebug(`[DEBUG-INFO]: Aktueller Lagerbestand (Holz/Lehm/Eisen): ${game_data.village.wood}/${game_data.village.stone}/${game_data.village.iron}`);
-            logDebug(`[DEBUG-INFO]: Eingehende Transporte (echt): Holz: ${actualIncomingWood}, Lehm: ${actualIncomingStone}, Eisen: ${actualIncomingIron}`);
-            logDebug(`[DEBUG-INFO]: Theoretischer Gesamtbestand (inkl. aktueller + eingehender): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
-            logDebug(`[DEBUG-INFO]: Verfügbarer Lagerplatz (pro Ressource): Holz: ${WHCap - currentTheoreticalWood}, Lehm: ${WHCap - currentTheoreticalStone}, Eisen: ${WHCap - currentTheoreticalIron}`);
-            logDebug(`[DEBUG-INFO]: Max. Lagerkapazität: ${WHCap}`);
-        }
+        // WICHTIG: Hier rufen wir initializeCurrentResources JEDES MAL auf, wenn eine neue Anforderung gestartet wird.
+        // Das stellt sicher, dass wir die aktuellen Lagerbestände und eingehenden Transporte vor Beginn der Schleife haben.
+        // Wir unterdrücken die Info-Nachricht hier, da wir später eine spezifischere ausgeben.
+        await initializeCurrentResources(true);
+
+        logDebug(`[DEBUG-INFO]: Aktueller Lagerbestand (Holz/Lehm/Eisen): ${game_data.village.wood}/${game_data.village.stone}/${game_data.village.iron}`);
+        logDebug(`[DEBUG-INFO]: Eingehende Transporte (echt, initial für diese Anforderung): Holz: ${actualIncomingWood}, Lehm: ${actualIncomingStone}, Eisen: ${actualIncomingIron}`);
+        logDebug(`[DEBUG-INFO]: Theoretischer Gesamtbestand (inkl. aktueller + eingehender): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
+        logDebug(`[DEBUG-INFO]: Verfügbarer Lagerplatz (pro Ressource): Holz: ${WHCap - currentTheoreticalWood}, Lehm: ${WHCap - currentTheoreticalStone}, Eisen: ${WHCap - currentTheoreticalIron}`);
+        logDebug(`[DEBUG-INFO]: Max. Lagerkapazität: ${WHCap}`);
 
 
-        // Der aktuelle Bedarf wird HIER immer neu berechnet, basierend auf dem aktuellen theoretischen Stand
-        // (der jetzt *innerhalb* der Schleife aktualisiert wird).
+        // Der aktuelle Bedarf wird HIER immer neu berechnet, basierend auf dem aktuellen theoretischen Stand.
         let currentNeeded = {
             wood: Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood),
             stone: Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone),
@@ -579,22 +572,20 @@
                     );
                     UI.InfoMessage(`(SIMULIERT) Ressourcen von ${source.name} angefordert: H:${payload.wood} L:${payload.stone} E:${payload.iron}`, 3000);
 
-                    // Im Debug-Modus simulieren wir den Erfolg und aktualisieren die theoretischen Gesamtressourcen
-                    totalSentPotential.wood += payload.wood;
-                    totalSentPotential.stone += payload.stone;
-                    totalSentPotential.iron += payload.iron;
+                    // Im DEBUG-Modus: Hole die eingehenden Transporte NEU vom Server nach jeder simulierten Sendung
+                    await initializeCurrentResources(true); // Rufe initializeCurrentResources auf, um aktuelle eingehende Transporte zu holen
 
-                    // *** WICHTIG: currentTheoretical... wird hier aktualisiert! ***
-                    currentTheoreticalWood += payload.wood;
-                    currentTheoreticalStone += payload.stone;
-                    currentTheoreticalIron += payload.iron;
-                    logDebug(`Nach SIMULIERTER Lieferung von ${source.name}: Theoretische Ressourcen jetzt: H:${currentTheoreticalWood}, L:${currentTheoreticalStone}, E:${currentTheoreticalIron}`);
+                    // Aktualisiere den *verbleibenden Bedarf* basierend auf den NEUEN theoretischen Ressourcen
+                    // (die initializeCurrentResources gerade aktualisiert hat)
+                    currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
+                    currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
+                    currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
 
+                    logDebug(`Nach SIMULIERTER Lieferung von ${source.name} und NEUEM Abruf der Marktplatzdaten: `);
+                    logDebug(`   Eingehende Transporte (echt, aktualisiert durch Server-Abruf): Holz: ${actualIncomingWood}, Lehm: ${actualIncomingStone}, Eisen: ${actualIncomingIron}`);
+                    logDebug(`   Theoretische Ressourcen (aktualisiert): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
+                    logDebug(`   Verbleibender Bedarf (aktualisiert): H:${currentNeeded.wood}, L:${currentNeeded.stone}, E:${currentNeeded.iron}`);
 
-                    // Aktualisiere den *verbleibenden Bedarf* basierend auf der aktuellen simulierten Lieferung
-                    currentNeeded.wood = Math.max(0, currentNeeded.wood - payload.wood);
-                    currentNeeded.stone = Math.max(0, currentNeeded.stone - payload.stone);
-                    currentNeeded.iron = Math.max(0, currentNeeded.iron - payload.iron);
 
                 } else { // PRODUKTIV MODUS
                     try {
@@ -619,20 +610,22 @@
                                 UI.SuccessMessage(`Ressourcen von ${source.name} gesendet: H:${transferredWood} L:${transferredStone} E:${transferredIron}`, 3000);
                                 console.log(`Ressourcen erfolgreich gesendet von ${source.name}. Übertragen: H:${transferredWood} L:${transferredStone} E:${transferredIron}. Antwort:`, response);
 
+                                // Im PRODUKTIV-Modus: Hole die eingehenden Transporte NEU vom Server nach jeder Sendung
+                                await initializeCurrentResources(true);
+
+                                currentNeeded.wood = Math.max(0, resourcesNeeded[buildingNr].wood - currentTheoreticalWood);
+                                currentNeeded.stone = Math.max(0, resourcesNeeded[buildingNr].stone - currentTheoreticalStone);
+                                currentNeeded.iron = Math.max(0, resourcesNeeded[buildingNr].iron - currentTheoreticalIron);
+
+                                logDebug(`Nach ECHTER Lieferung von ${source.name} und NEUEM Abruf der Marktplatzdaten: `);
+                                logDebug(`   Eingehende Transporte (echt, aktualisiert durch Server-Abruf): Holz: ${actualIncomingWood}, Lehm: ${actualIncomingStone}, Eisen: ${actualIncomingIron}`);
+                                logDebug(`   Theoretische Ressourcen (aktualisiert): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
+                                logDebug(`   Verbleibender Bedarf (aktualisiert): H:${currentNeeded.wood}, L:${currentNeeded.stone}, E:${currentNeeded.iron}`);
+
+
                                 totalSentPotential.wood += transferredWood;
                                 totalSentPotential.stone += transferredStone;
                                 totalSentPotential.iron += transferredIron;
-
-                                // *** WICHTIG: currentTheoretical... wird hier aktualisiert! ***
-                                currentTheoreticalWood += transferredWood;
-                                currentTheoreticalStone += transferredStone;
-                                currentTheoreticalIron += transferredIron;
-                                logDebug(`Nach ECHTER Lieferung von ${source.name}: Theoretische Ressourcen jetzt: H:${currentTheoreticalWood}, L:${currentTheoreticalStone}, E:${currentTheoreticalIron}`);
-
-
-                                currentNeeded.wood = Math.max(0, currentNeeded.wood - transferredWood);
-                                currentNeeded.stone = Math.max(0, currentNeeded.stone - transferredStone);
-                                currentNeeded.iron = Math.max(0, currentNeeded.iron - transferredIron);
 
                                 // source (lokale Kopie) wurde bereits oben aktualisiert
                                 // sourcesToUpdate (globale Referenz) wurde bereits oben gesetzt
@@ -647,7 +640,7 @@
                         }
                     } catch (jqXHR) {
                         UI.ErrorMessage(`Netzwerkfehler oder unerwartete Antwort beim Senden von ${source.name}`, 5000);
-                        logError(`Netzwerkfehler oder unerwartete Antwort beim Senden von ${source.name}. jqXHR/Error:`, jqXHR);
+                        logError(`Netzwerkfehler oder unerwartete Antwort beim Souterrain von ${source.name}. jqXHR/Error:`, jqXHR);
                     }
                 }
                 // --- VERZÖGERUNG HINZUFÜGEN (auch im Debug-Modus sinnvoll für realistische Simulation) ---
