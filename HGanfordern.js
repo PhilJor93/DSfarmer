@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.14)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.15)
 // @namespace     http://tampermonkey.net/
-// @version       2.14 // Fix: Robuste Text-basierte Erkennung eingehender Transporte
+// @version       2.15 // Fix: Korrigiertes Ressourcen-Parsing für eingehende Transporte
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.14' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.15' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -217,11 +217,11 @@
      */
     function parseResourceAmount(text) {
         if (!text) return 0;
-        // Entfernt alle Nicht-Ziffern außer dem Punkt (falls vorhanden) und dann den Punkt selbst
-        // Oder genauer: Entfernt alles, was keine Ziffer ist, und ersetzt dann den Punkt
-        const cleanedText = text.replace(/[^\d\.]/g, "").replace(/\./g, ""); // Entfernt alles außer Zahlen und Punkte, dann die Punkte
-        const match = cleanedText.match(/(\d+)/);
-        return match ? parseInt(match[1]) : 0;
+        // Entfernt alle Nicht-Ziffern (inkl. Leerzeichen, Buchstaben, Punkte, Kommas etc.)
+        // WICHTIG: Hier wurde der Regex von `/[^\d\.]/g` zu `/\D/g` geändert.
+        // `\D` matcht alles, was KEINE Ziffer ist.
+        const cleanedText = text.replace(/\D/g, "");
+        return parseInt(cleanedText);
     }
 
 
@@ -267,7 +267,6 @@
                 // Wir suchen die `span.nowrap`-Elemente direkt innerhalb des übergeordneten Elements,
                 // das den "Eintreffend:"-Text enthält.
 
-                // Finde das übergeordnete Element, das sowohl den Text als auch die Spans enthält
                 let $containerElement;
                 if ($incomingTextElement.is('th') || $incomingTextElement.is('div') || $incomingTextElement.is('p')) {
                     $containerElement = $incomingTextElement;
