@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.16)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.17)
 // @namespace     http://tampermonkey.net/
-// @version       2.16 // Fix: Noch robusteres Ressourcen-Parsing und zusätzliche Debug-Infos
+// @version       2.17 // Fix: Finales Korrektur des Ressourcen-Parsings für eingehende Transporte (regex)
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.16' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.17' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -213,29 +213,38 @@
 
     /**
      * Helferfunktion zum Parsen von Ressourcenmengen aus Text,
-     * bereinigt alle Nicht-Ziffern.
+     * bereinigt alle Nicht-Ziffern und extrahiert nur die erste Zahl.
      */
     function parseResourceAmount(text) {
         if (!text) return 0;
 
-        // Zusätzlicher Debug-Output für den Roh-Text und den bereinigten Text
         logDebug(`parseResourceAmount: Roh-Text: "${text}"`);
 
-        // Entfernt alle Nicht-Ziffern, auch Tausendertrennzeichen (Punkte, Kommas, Leerzeichen, geschützte Leerzeichen)
-        // Verwenden Sie eine allgemeinere Ersetzung für alle Arten von Leerzeichen und nicht-numerischen Zeichen
-        let cleanedText = text.replace(/[^0-9]/g, '');
+        // Extrahiere die erste Gruppe von Ziffern, optional mit Punkten dazwischen.
+        // Das bedeutet: Finde eine Zahl, die Punkte als Tausendertrennzeichen haben kann.
+        // `\d+` matcht eine oder mehrere Ziffern.
+        // `(?:[.,]?\d+)*` matcht optional eine Gruppe, die mit einem Punkt oder Komma beginnt, gefolgt von Ziffern, null oder mehr Mal.
+        // Da wir nur die erste Zahl wollen, nutzen wir `match` und nehmen das erste Ergebnis.
+        const match = text.match(/(\d{1,3}(?:[.,]\d{3})*|\d+)/);
 
-        logDebug(`parseResourceAmount: Bereinigter Text: "${cleanedText}"`);
+        if (match && match[1]) {
+            let extractedNumberString = match[1];
+            logDebug(`parseResourceAmount: Extrahierter Zahlen-String (mit möglichen Trennzeichen): "${extractedNumberString}"`);
 
-        // Sicherstellen, dass der Text nicht leer ist, bevor geparst wird
-        if (cleanedText === "") {
-            return 0;
+            // Entferne alle Tausender-Trennzeichen (Punkte und Kommas) aus dem extrahierten String
+            // um eine saubere Zahl für parseInt zu erhalten.
+            const cleanedText = extractedNumberString.replace(/[.,]/g, '');
+
+            logDebug(`parseResourceAmount: Bereinigter Text (ohne Trennzeichen): "${cleanedText}"`);
+
+            const parsedValue = parseInt(cleanedText, 10);
+            logDebug(`parseResourceAmount: Geparsedter Wert: ${parsedValue}`);
+
+            return isNaN(parsedValue) ? 0 : parsedValue;
         }
 
-        const parsedValue = parseInt(cleanedText, 10); // explizit Basis 10 angeben
-        logDebug(`parseResourceAmount: Geparsedter Wert: ${parsedValue}`);
-
-        return isNaN(parsedValue) ? 0 : parsedValue;
+        logDebug(`parseResourceAmount: Keine gültige Zahl im Text "${text}" gefunden. Rückgabe 0.`);
+        return 0;
     }
 
 
