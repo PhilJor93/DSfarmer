@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.6)
+// @name          Tribal Wars Smart Resource Request (Anfrage Helfer) (V.2.7)
 // @namespace     http://tampermonkey.net/
-// @version       2.6 // Neu: Debug-Infos zu Lager & Transporten vor Anforderung
+// @version       2.7 // Fix: Verbesserter Transport-Parsing
 // @description   Ein Skript für Tribal Wars, das intelligent Ressourcen für Gebäude anfordert, mit Optionen für Dorfgruppen, maximale Mengen pro Dorf und Mindestbestände. Mit umschaltbarem Debug-Modus.
 // @author        PhilJor93 - Generiert mithilfe von Google Gemini KI
 // @match         https://*.tribalwars.*/game.php*
@@ -16,7 +16,7 @@
     const DEBUG_MODE = true; // Setze auf 'false' für PROD!
     // *****************************************
 
-    const SCRIPT_VERSION = '2.6' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
+    const SCRIPT_VERSION = '2.7' + (DEBUG_MODE ? ' - DEBUG MODE' : ' - PRODUCTIVE MODE');
 
     // --- Globale Variablen für das Skript ---
     var sources = []; // Speichert alle potenziellen Quelldörfer und deren Daten
@@ -86,7 +86,7 @@
                 // Parsed-Werte sicher in scriptSettings übernehmen, mit Fallback auf Standardwerte
                 scriptSettings.selectedGroupId = parsed.selectedGroupId || '0';
                 scriptSettings.maxSendWood = parseInt(parsed.maxSendWood) || 0;
-                scriptSettings.maxSendStone = parseInt(parsed.maxStone) || 0; // Legacy support for old saved variable name
+                scriptSettings.maxSendStone = parseInt(parsed.maxSendStone) || 0; // Legacy support for old saved variable name
                 scriptSettings.maxSendIron = (parsed.maxSendIron !== undefined && !isNaN(parseInt(parsed.maxSendIron))) ? parseInt(parsed.maxSendIron) : (parseInt(parsed.maxIron) || 0);
 
                 // Neue Mindestmengen-Einstellungen mit Fallback auf 10000, falls nicht vorhanden oder ungültig
@@ -212,6 +212,19 @@
     }
 
     /**
+     * Helferfunktion zum Parsen von Ressourcenmengen aus Text,
+     * bereinigt Tausender-Trennzeichen.
+     */
+    function parseResourceAmount(text) {
+        if (!text) return 0;
+        // Entfernt alle Punkte oder Kommas (für Tausender-Trennzeichen)
+        const cleanedText = text.replace(/[\.,]/g, "");
+        const match = cleanedText.match(/(\d+)/);
+        return match ? parseInt(match[1]) : 0;
+    }
+
+
+    /**
      * Initialisiert die aktuellen (theoretischen) Ressourcen des Dorfes
      * unter Berücksichtigung der aktuellen Bestände und eingehender Transporte.
      * Speichert auch die echten eingehenden Transporte separat für den Debug-Modus.
@@ -243,13 +256,14 @@
             if ($incomingTransportsTable.length > 0) {
                 $incomingTransportsTable.find('tr.row_a, tr.row_b').each(function() {
                     const $row = $(this);
-                    const woodMatch = $row.find('img[src*="wood.png"]').next().text().match(/(\d+)/);
-                    const stoneMatch = $row.find('img[src*="stone.png"]').next().text().match(/(\d+)/);
-                    const ironMatch = $row.find('img[src*="iron.png"]').next().text().match(/(\d+)/);
+                    // Versuche, die Zelle mit dem Ressourcen-Icon zu finden und den Text daraus zu parsen
+                    const woodCell = $row.find('td:has(img[src*="wood.png"])');
+                    const stoneCell = $row.find('td:has(img[src*="stone.png"])');
+                    const ironCell = $row.find('td:has(img[src*="iron.png"])');
 
-                    const currentIncomingWood = woodMatch ? parseInt(woodMatch[1]) : 0;
-                    const currentIncomingStone = stoneMatch ? parseInt(stoneMatch[1]) : 0;
-                    const currentIncomingIron = ironMatch ? parseInt(ironMatch[1]) : 0;
+                    const currentIncomingWood = parseResourceAmount(woodCell.text());
+                    const currentIncomingStone = parseResourceAmount(stoneCell.text());
+                    const currentIncomingIron = parseResourceAmount(ironCell.text());
 
                     incomingWoodForTheoretical += currentIncomingWood;
                     incomingStoneForTheoretical += currentIncomingStone;
@@ -368,7 +382,7 @@
             logDebug(`[DEBUG-INFO]: Aktueller Lagerbestand (Holz/Lehm/Eisen): ${game_data.village.wood}/${game_data.village.stone}/${game_data.village.iron}`);
             logDebug(`[DEBUG-INFO]: Eingehende Transporte (echt): Holz: ${actualIncomingWood}, Lehm: ${actualIncomingStone}, Eisen: ${actualIncomingIron}`);
             logDebug(`[DEBUG-INFO]: Theoretischer Gesamtbestand (inkl. aktueller + eingehender): Holz: ${currentTheoreticalWood}, Lehm: ${currentTheoreticalStone}, Eisen: ${currentTheoreticalIron}`);
-            logDebug(`[DEBUG-INFO]: Verfügbarer Lagerplatz (pro Ressource): ${WHCap - currentTheoreticalWood} Holz, ${WHCap - currentTheoreticalStone} Lehm, ${WHCap - currentTheoreticalIron} Eisen`);
+            logDebug(`[DEBUG-INFO]: Verfügbarer Lagerplatz (pro Ressource): Holz: ${WHCap - currentTheoreticalWood}, Lehm: ${WHCap - currentTheoreticalStone}, Eisen: ${WHCap - currentTheoreticalIron}`);
             logDebug(`[DEBUG-INFO]: Max. Lagerkapazität: ${WHCap}`);
         }
 
