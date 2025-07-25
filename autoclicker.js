@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.33 // Version auf 3.33 aktualisiert - Statusleiste beginnt und endet exakt mit Buttons
+// @version       3.34 // Version auf 3.34 aktualisiert - Statusleiste Breite nun pixelgenau per CSS
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.33'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.34'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -582,7 +582,7 @@
 
             saveSettings();
             customDialogElement.remove();
-            customDialogElement = null;
+        customDialogElement = null;
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 UI.InfoMessage('Einstellungen gespeichert!', 2000);
             }
@@ -730,6 +730,7 @@
                 position: absolute;
                 top: 100%; /* Position unter den Buttons */
                 left: 0; /* Beginn am linken Rand des Button-Containers */
+                right: 0; /* Ende am rechten Rand des Button-Containers */
                 background-color: rgba(0,0,0,0.7);
                 color: white;
                 padding: 5px 10px;
@@ -740,6 +741,7 @@
                 overflow: hidden;
                 text-overflow: ellipsis;
                 transform: translateY(5px); /* Zusätzlicher Abstand nach unten */
+                box-sizing: border-box; /* Sicherstellen, dass Padding/Border in die Breite fallen */
             ">
                 TW Auto-Action ist bereit.
             </div>
@@ -794,13 +796,8 @@
             });
         }
 
-        // Statusleisten-Breite an die Buttons anpassen, nachdem alles gerendert ist
-        setTimeout(() => {
-            if (statusBarRef.length && $('#tw_auto_action_buttons_row').length) {
-                const buttonsRowWidth = $('#tw_auto_action_buttons_row').outerWidth();
-                statusBarRef.css('width', buttonsRowWidth + 'px');
-            }
-        }, 50); // Kleiner Timeout, um sicherzustellen, dass die Buttons ihre finale Breite haben
+        // KEINE BREITENBERECHNUNG MEHR PER JAVASCRIPT
+        // Die Breite wird nun automatisch durch left:0; right:0; innerhalb des position:relative; containers gesteuert.
 
         updateUIStatus(); // Initiales Update des Status für alle Elemente
     }
