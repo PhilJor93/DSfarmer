@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.31 // Version auf 3.31 aktualisiert - Positionierung oberhalb "Account-Manager" (im Seiteninhalt)
+// @version       3.32 // Version auf 3.32 aktualisiert - Buttons linksbündig und Statusleiste exakte Breite
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.31'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.32'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -663,7 +663,7 @@
         if (botProtectionDetected) {
             statusBarBgColor = '#dc3545'; // Rot
             currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
-            currentStatusText = '[BOTSCHUTSCHUTZ] Auto-Action pausiert!';
+            currentStatusText = '[BOTSCHUTZ] Auto-Action pausiert!';
         } else if (autoActionActive) {
             statusBarBgColor = '#28a745'; // Grün
             currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
@@ -718,7 +718,7 @@
             border: 1px solid #804000; /* Feste neutrale Rahmenfarbe */
         `;
 
-        // HTML für die Buttons (Reihenfolge hier ist wichtig für flexbox justify-content: flex-end)
+        // HTML für die Buttons (Reihenfolge hier ist wichtig für flexbox justify-content: flex-start)
         // Visuell: Start/Stopp (links) -- Ton Aktivieren (Mitte) -- Einstellungen (rechts)
         const toggleButtonHtml = `<a href="#" id="tw_auto_action_toggle_button" class="btn" style="${buttonBaseStyle}">Auto-Action Start/Stopp</a>`;
         const activateSoundButtonHtml = `<a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle}">Ton Aktivieren</a>`;
@@ -726,7 +726,7 @@
 
         // Statusleiste HTML (keine feste Positionierung, sondern Teil des Seitenflusses)
         const statusBarHtml = `
-            <div id="tw_auto_action_status_bar" style="background-color: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 5px;">
+            <div id="tw_auto_action_status_bar" style="background-color: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 5px;">
                 TW Auto-Action ist bereit.
             </div>
         `;
@@ -734,7 +734,7 @@
         // Haupt-Container für Buttons und Statusleiste
         const mainContainerHtml = `
             <div id="tw_auto_action_main_container" style="margin-bottom: 15px; margin-top: 5px; width: 100%; box-sizing: border-box;">
-                <div id="tw_auto_action_buttons_row" style="display: flex; justify-content: flex-end; gap: 10px; align-items: center; margin-bottom: 5px;">
+                <div id="tw_auto_action_buttons_row" style="display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 5px;">
                     ${toggleButtonHtml}
                     ${activateSoundButtonHtml}
                     ${settingsButtonHtml}
@@ -779,6 +779,14 @@
                 window.toggleTribalAutoAction();
             });
         }
+
+        // Statusleisten-Breite an die Buttons anpassen, nachdem alles gerendert ist
+        setTimeout(() => {
+            if (statusBarRef.length && $('#tw_auto_action_buttons_row').length) {
+                const buttonsRowWidth = $('#tw_auto_action_buttons_row').outerWidth();
+                statusBarRef.css('width', buttonsRowWidth + 'px');
+            }
+        }, 50); // Kleiner Timeout, um sicherzustellen, dass die Buttons ihre finale Breite haben
 
         updateUIStatus(); // Initiales Update des Status für alle Elemente
     }
