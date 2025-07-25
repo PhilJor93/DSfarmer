@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.13 // Version auf 3.13 aktualisiert - Verbesserung der Sound-Wiedergabe
+// @version       3.15 // Version auf 3.15 aktualisiert - Test-Ton Button im Einstellungsfenster
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.13'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.15'; // Die aktuelle Version des Skripts
 
     // --- Standardeinstellungen ---
     const defaultSettings = {
@@ -99,12 +99,12 @@
         gainNode.connect(audioCtx.destination);
 
         oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // Frequenz (A4)
-        gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime); // Lautstärke (0.0 bis 1.0)
+        oscillator.frequency.setValueAtTime(660, audioCtx.currentTime); // Frequenz (A#5) für bessere Hörbarkeit
+        gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); // Lautstärke etwas erhöhen (0.0 bis 1.0)
 
         oscillator.start();
-        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5); // Ton ausblenden
-        oscillator.stop(audioCtx.currentTime + 0.5); // Ton nach 0.5 Sekunden stoppen
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8); // Ton etwas länger (0.8s)
+        oscillator.stop(audioCtx.currentTime + 0.8);
         console.log('TW Auto-Action: Oszillator-Ton gestartet.');
     }
 
@@ -116,17 +116,16 @@
                 console.log('TW Auto-Action: AudioContext initialisiert. Zustand:', audioCtx.state);
             }
 
-            // Versuche AudioContext fortzusetzen, falls es ausgesetzt ist (Browser-Autoplay-Richtlinien)
             if (audioCtx.state === 'suspended') {
                 console.log('TW Auto-Action: AudioContext ist ausgesetzt, versuche Fortsetzung...');
                 audioCtx.resume().then(() => {
-                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt.');
+                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt und Ton wird abgespielt.');
                     createAndPlayOscillator();
                 }).catch(e => {
                     console.warn("TW Auto-Action: Fehler beim Fortsetzen des AudioContext.", e);
                 });
             } else if (audioCtx.state === 'running') {
-                console.log('TW Auto-Action: AudioContext läuft bereits.');
+                console.log('TW Auto-Action: AudioContext läuft bereits, Ton wird abgespielt.');
                 createAndPlayOscillator();
             } else {
                 console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand:', audioCtx.state);
@@ -275,11 +274,14 @@
             botProtectionDetected = false;
         } else {
             // Beim Starten des Skripts durch Nutzerinteraktion: Versuche AudioContext zu aktivieren
+            if (!audioCtx) { // Ensure audioCtx exists before trying to resume outside of playAntiBotSound
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
             if (audioCtx && audioCtx.state === 'suspended') {
                 audioCtx.resume().then(() => {
-                    console.log('TW Auto-Action: AudioContext beim Starten fortgesetzt.');
+                    console.log('TW Auto-Action: AudioContext beim Starten fortgesetzt durch Benutzerinteraktion.');
                 }).catch(e => {
-                    console.warn('TW Auto-Action: Fehler beim Fortsetzen des AudioContext beim Starten.', e);
+                    console.warn('TW Auto-Action: Fehler beim Fortsetzen des AudioContext beim Starten durch Benutzerinteraktion.', e);
                 });
             }
 
@@ -404,6 +406,7 @@
                         <td><input type="checkbox" id="setting_pause_on_bot_protection" ${currentSettings.pauseOnBotProtection ? 'checked' : ''}> Bei Botschutz-Abfrage pausieren</td>
                     </tr>
                 </table>
+                <button id="tw_auto_action_test_sound" class="btn">Test-Ton abspielen</button>
                 <button id="tw_auto_action_save_settings" class="btn">Speichern</button>
                 <button id="tw_auto_action_close_settings" class="btn btn-red">Schließen</button>
             </div>
@@ -416,6 +419,12 @@
         `);
 
         $('body').append(customDialogElement);
+
+        // Event Listener für den neuen Test-Button
+        $('#tw_auto_action_test_sound').on('click', () => {
+            playAntiBotSound();
+        });
+
 
         $('#tw_auto_action_save_settings').on('click', () => {
             const newToggleKeyChar = $('#setting_toggle_key_char').val().toUpperCase();
