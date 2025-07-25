@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.10 // Version auf 3.10 aktualisiert für präzisere Botschutz-Erkennung (Tooltip des Männchens)
+// @version       3.11 // Version auf 3.11 aktualisiert für präziseste Botschutz-Erkennung (das Männchen-Icon selbst)
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -107,10 +107,11 @@
     // --- Botschutz-Erkennung ---
     function checkAntiBotProtection() {
         const botProtectionSelectors = [
-            '#bot_protect_dialog',
-            'div[data-id="bot_protection"]',
-            '#popup_box_bot_protection',
-            'div#tooltip:contains("Bot-Schutz")', // NEU: Für das Männchen/Tooltip, nur wenn sichtbar und mit dem Text "Bot-Schutz"
+            'div#botprotection_quest', // NEU und sehr präzise: Das Männchen-Icon selbst
+            'div[data-id="bot_protection"]', // Das Haupt-Popup (z.B. hCaptcha)
+            '#popup_box_bot_protection',     // Das Haupt-Popup (ID)
+            'div#tooltip:contains("Bot-Schutz")', // Das Tooltip, das beim Hover über das Männchen erscheinen kann
+            '#bot_protect_dialog', // Älterer, allgemeiner Dialog
             '.popup_box_container:contains("Sicherheitsabfrage")',
             '.popup_box_container:contains("Bot-Schutz")',
             'div[data-bot-check="true"]',
@@ -120,12 +121,6 @@
             '#recaptcha-challenge',
             '#bot_captcha_div',
             'div.error:contains("Bitte bestätigen Sie, dass Sie kein Bot sind.")',
-            // Selektoren für das Männchen-Icon selbst, falls es OHNE dieses Tooltip erscheint (derzeit auskommentiert):
-            // 'div#ds_bottom_row div.bot-protection-icon',
-            // 'img[src*="bot_alert_icon"]',
-            // '#bot_protection_indicator.new_message_count_box',
-            // 'div[aria-label*="Botschutz-Abfrage"]',
-            // '.menu-item-anti-bot-protection',
         ];
 
         let isBotProtectionVisible = false;
@@ -519,7 +514,7 @@
                 if (currentSettings.requiredShift) hotkeyDisplay = 'Shift + ' + hotkeyDisplay;
                 hotkeyDisplay = hotkeyDisplay.replace(/\s\+\s$/, '');
 
-                UI.InfoMessage('TW Auto-Action (v3.10) ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
+                UI.InfoMessage('TW Auto-Action (v3.11) ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
             }
         }, 1000);
 
