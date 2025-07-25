@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.23 // Version auf 3.23 aktualisiert - "Ton Aktivieren" Button spielt ausgewählten Sound
+// @version       3.24 // Version auf 3.24 aktualisiert - Weitere Sounds hinzugefügt
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.23'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.24'; // Die aktuelle Version des Skripts
 
     // --- Sound-Profile Definitionen ---
     // Hier können weitere Sounds hinzugefügt oder bestehende angepasst werden
@@ -25,7 +25,12 @@
         'default': { name: 'Standard (Hell)', frequency: 660, type: 'sine', duration: 0.8, volume: 0.5 },
         'alarm': { name: 'Alarm (Kurz & Hoch)', frequency: 880, type: 'triangle', duration: 0.4, volume: 0.6 },
         'chime': { name: 'Glocke (Tief & Langsam)', frequency: 440, type: 'sine', duration: 1.2, volume: 0.4 },
-        'beep': { name: 'Beep (Standard-Signal)', frequency: 750, type: 'square', duration: 0.2, volume: 0.7 }
+        'beep': { name: 'Beep (Standard-Signal)', frequency: 750, type: 'square', duration: 0.2, volume: 0.7 },
+        // NEUE SOUNDS:
+        'high_alert': { name: 'Hoher Alarm', frequency: 1000, type: 'sawtooth', duration: 0.3, volume: 0.7 },
+        'soft_chime': { name: 'Sanfte Glocke', frequency: 523.25, type: 'sine', duration: 0.6, volume: 0.4 }, // C5
+        'deep_thump': { name: 'Tiefer Puls', frequency: 120, type: 'square', duration: 0.5, volume: 0.8 },
+        'quick_blip': { name: 'Kurzer Blip', frequency: 1500, type: 'sine', duration: 0.1, volume: 0.6 }
     };
 
     // --- Standardeinstellungen ---
@@ -177,7 +182,7 @@
                 console.log('TW Auto-Action: AudioContext initialisiert (durch Aktivierungs-Button). Zustand:', audioCtx.state);
             }
 
-            // NEU: Verwende das aktuell ausgewählte Sound-Profil für den Testton
+            // Verwende das aktuell ausgewählte Sound-Profil für den Testton
             const profileToPlay = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
 
             if (audioCtx.state === 'suspended') {
