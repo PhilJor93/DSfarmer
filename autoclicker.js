@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.15 // Version auf 3.15 aktualisiert - Test-Ton Button im Einstellungsfenster
+// @version       3.16 // Version auf 3.16 aktualisiert - Test-Ton mit Verzögerung
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.15'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.16'; // Die aktuelle Version des Skripts
 
     // --- Standardeinstellungen ---
     const defaultSettings = {
@@ -406,7 +406,7 @@
                         <td><input type="checkbox" id="setting_pause_on_bot_protection" ${currentSettings.pauseOnBotProtection ? 'checked' : ''}> Bei Botschutz-Abfrage pausieren</td>
                     </tr>
                 </table>
-                <button id="tw_auto_action_test_sound" class="btn">Test-Ton abspielen</button>
+                <button id="tw_auto_action_test_sound" class="btn">Test-Ton (nach 5s Verzögerung)</button>
                 <button id="tw_auto_action_save_settings" class="btn">Speichern</button>
                 <button id="tw_auto_action_close_settings" class="btn btn-red">Schließen</button>
             </div>
@@ -422,7 +422,13 @@
 
         // Event Listener für den neuen Test-Button
         $('#tw_auto_action_test_sound').on('click', () => {
-            playAntiBotSound();
+            if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                UI.InfoMessage('Test-Ton wird in 5 Sekunden abgespielt. Stelle sicher, dass du zuvor auf die Seite geklickt hast!', 5000);
+            }
+            console.log('TW Auto-Action: Test-Ton in 5 Sekunden geplant.');
+            setTimeout(() => {
+                playAntiBotSound();
+            }, 5000); // 5 Sekunden Verzögerung
         });
 
 
