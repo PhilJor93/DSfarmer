@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.26 // Version auf 3.26 aktualisiert - Start/Stop-Button hinzugefügt
+// @version       3.27 // Version auf 3.27 aktualisiert - Button-Schrift weiß, Statusleiste hinzugefügt
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.26'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.27'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -101,6 +101,7 @@
     let autoActionIntervalId = null;
     let botProtectionDetected = false;
     let noFarmButtonsDetected = false;
+    let initialReadyMessageShown = false; // Flag für die initiale Nachricht
 
     // --- Hilfsfunktion zum Generieren eines zufälligen Intervalls ---
     function getRandomInterval(min, max) {
@@ -463,12 +464,12 @@
                         border: 1px solid #804000;
                         border-radius: 3px;
                         background-color: #f0e2b6;
-                        color: #5b3617;
+                        color: #5b3617; /* Standardfarbe für Buttons im Dialog */
                     }
                     #tw_auto_action_settings_dialog_content .btn-red {
                         background-color: #d1b790;
                         border-color: #6d3300;
-                        color: #3b1e0a;
+                        color: #3b1e0a; /* Standardfarbe für Buttons im Dialog */
                     }
                     #tw_auto_action_settings_dialog_content h3 {
                         color: #804000;
@@ -613,66 +614,97 @@
     // --- Einstellungs-Button auf der Farm-Seite hinzufügen ---
     let settingsButtonRef = null;
     let activateSoundButtonRef = null;
-    let toggleButtonRef = null; // NEU: Referenz für den Start/Stop-Button
+    let toggleButtonRef = null;
+    let mainContainerRef = null; // NEU: Referenz auf den Haupt-Container
+    let buttonsRowRef = null; // NEU: Referenz auf die Buttons-Reihe
+    let statusBarRef = null; // NEU: Referenz auf die Statusleiste
 
-    // Funktion zum Aktualisieren des UI-Status (Button-Text, Farbe und NEU: Tab-Titel)
+
+    // Funktion zum Aktualisieren des UI-Status (Button-Text, Farbe und NEU: Tab-Titel & Statusleiste)
     function updateUIStatus() {
         let currentTabTitle = originalDocumentTitle; // Startet mit dem Originaltitel
+        let currentStatusText = 'TW Auto-Action ist bereit.'; // Standardtext für die Statusleiste
+
+        // Farben für Buttons
+        let buttonBgColor;
+        let buttonBorderColor;
+
+        if (botProtectionDetected) {
+            buttonBgColor = '#f8d7da'; // Rot-Stich
+            buttonBorderColor = '#dc3545'; // Rot-Stich
+            currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
+            currentStatusText = '[BOTSCHUTZ] Auto-Action pausiert!';
+        } else if (noFarmButtonsDetected) {
+            buttonBgColor = '#fff3cd'; // Gelb-Stich
+            buttonBorderColor = '#ffeeba'; // Gelb-Stich
+            currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
+            currentStatusText = '[KEINE BUTTONS] Auto-Action gestoppt.';
+        } else if (autoActionActive) {
+            buttonBgColor = '#d4edda'; // Grün-Stich
+            buttonBorderColor = '#28a745'; // Grün-Stich
+            currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
+            currentStatusText = '[AKTIV] Auto-Action läuft...';
+        } else {
+            buttonBgColor = '#f0e2b6'; // Standard/Inaktiv
+            buttonBorderColor = '#804000'; // Standard/Inaktiv
+            currentStatusText = 'Auto-Action ist inaktiv.';
+        }
 
         // Update Settings Button
         if (settingsButtonRef) {
-            let statusText = autoActionActive ? ' (Aktiv)' : ' (Inaktiv)';
-            let backgroundColor = autoActionActive ? '#d4edda' : '#f0e2b6';
-            let textColor = autoActionActive ? '#155724' : '#5b3617';
-            let borderColor = autoActionActive ? '#28a745' : '#804000';
-
-            if (botProtectionDetected) {
-                statusText = ' (Botschutz erkannt - Inaktiv)';
-                backgroundColor = '#f8d7da';
-                textColor = '#721c24';
-                borderColor = '#dc3545';
-                currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
-            } else if (noFarmButtonsDetected) {
-                statusText = ' (Keine Farm-Buttons gefunden - Inaktiv)';
-                backgroundColor = '#fff3cd';
-                textColor = '#856404';
-                borderColor = '#ffeeba';
-                currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
-            } else if (autoActionActive) {
-                 currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
-            }
-
-            settingsButtonRef.text('Auto-Action Einstellungen' + statusText);
             settingsButtonRef.css({
-                'background-color': backgroundColor,
-                'color': textColor,
-                'border-color': borderColor
+                'background-color': buttonBgColor,
+                'border-color': buttonBorderColor,
+                'color': '#ffffff' // Fest auf weiß
             });
         }
 
-        // NEU: Update Toggle Button
-        if (toggleButtonRef) {
-            let toggleButtonText = autoActionActive ? 'Auto-Action Stopp' : 'Auto-Action Start';
-            let toggleButtonBg = autoActionActive ? '#d1b790' : '#d4edda'; // Rot-braun wenn aktiv, Grünlich wenn inaktiv
-            let toggleButtonColor = autoActionActive ? '#3b1e0a' : '#155724';
-            let toggleButtonBorder = autoActionActive ? '#6d3300' : '#28a745';
-
-            if (botProtectionDetected || noFarmButtonsDetected) {
-                toggleButtonText = 'Auto-Action (Pausiert)';
-                toggleButtonBg = '#fff3cd'; // Gelblich
-                toggleButtonColor = '#856404';
-                toggleButtonBorder = '#ffeeba';
+        // Update Activate Sound Button (Dieser Button hat eine eigene Logik für "Ton Aktiv")
+        if (activateSoundButtonRef) {
+             // Der "Ton Aktivieren" Button behält seine Farbänderung nach Klick
+             // Wenn er noch nicht geklickt wurde oder nicht aktiv ist, folgt er dem allgemeinen Schema
+            if (activateSoundButtonRef.text() === 'Ton Aktiv') {
+                 // Bleibt grün, wenn er geklickt wurde
+                 activateSoundButtonRef.css({
+                    'background-color': '#d4edda',
+                    'color': '#155724', // Hier könnte man auch auf weiß ändern, je nach Wunsch
+                    'border-color': '#28a745'
+                });
+            } else {
+                activateSoundButtonRef.css({
+                    'background-color': buttonBgColor,
+                    'border-color': buttonBorderColor,
+                    'color': '#ffffff' // Fest auf weiß
+                });
             }
-
-            toggleButtonRef.text(toggleButtonText);
-            toggleButtonRef.css({
-                'background-color': toggleButtonBg,
-                'color': toggleButtonColor,
-                'border-color': toggleButtonBorder
-            });
         }
 
-        document.title = currentTabTitle; // Setzt den Titel des Browser-Tabs
+        // Update Toggle Button
+        if (toggleButtonRef) {
+            toggleButtonRef.text(autoActionActive ? 'Auto-Action Stopp' : 'Auto-Action Start');
+            // Wenn pausiert durch Botschutz/keine Buttons, Button auch Gelb/Rot
+            if (botProtectionDetected || noFarmButtonsDetected) {
+                toggleButtonRef.css({
+                    'background-color': buttonBgColor, // Verwendet die oben berechneten Farben
+                    'border-color': buttonBorderColor,
+                    'color': '#ffffff' // Fest auf weiß
+                });
+            } else { // Normale Start/Stopp Logik
+                toggleButtonRef.css({
+                    'background-color': autoActionActive ? '#d1b790' : '#d4edda', // Rot-braun wenn aktiv, Grünlich wenn inaktiv
+                    'border-color': autoActionActive ? '#6d3300' : '#28a745',
+                    'color': '#ffffff' // Fest auf weiß
+                });
+            }
+        }
+
+        // Update Tab Title
+        document.title = currentTabTitle;
+
+        // Update Status Bar
+        if (statusBarRef) {
+            statusBarRef.text(currentStatusText);
+        }
     }
 
     function addAmFarmSettingsButton() {
@@ -681,72 +713,66 @@
         }
 
         const settingsButtonHtml = `
-            <a href="#" id="tw_auto_action_settings_button" class="btn" style="white-space: nowrap; margin-bottom: 10px; display: inline-block;">
+            <a href="#" id="tw_auto_action_settings_button" class="btn" style="white-space: nowrap; display: inline-block; color: white;">
                 Auto-Action Einstellungen
             </a>
         `;
 
         const activateSoundButtonHtml = `
-            <a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="white-space: nowrap; margin-bottom: 10px; display: inline-block; margin-right: 5px;">
+            <a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="white-space: nowrap; display: inline-block; color: white;">
                 Ton Aktivieren
             </a>
         `;
 
-        // NEU: HTML für den Start/Stop-Button
         const toggleButtonHtml = `
-            <a href="#" id="tw_auto_action_toggle_button" class="btn" style="white-space: nowrap; margin-bottom: 10px; display: inline-block; margin-right: 5px;">
+            <a href="#" id="tw_auto_action_toggle_button" class="btn" style="white-space: nowrap; display: inline-block; color: white;">
                 Auto-Action Start/Stopp
             </a>
         `;
 
+        // Haupt-Container für Buttons und Statusleiste
+        const mainContainerHtml = `
+            <div id="tw_auto_action_main_container" style="position: fixed; bottom: 10px; right: 10px; z-index: 100000; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; min-width: 100px;">
+                <div id="tw_auto_action_buttons_row" style="display: flex; flex-direction: row-reverse; gap: 10px; align-items: center;">
+                    </div>
+                <div id="tw_auto_action_status_bar" style="background-color: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    TW Auto-Action ist bereit.
+                </div>
+            </div>
+        `;
 
+        // Versuche, den Container sinnvoll einzufügen
         const accountManagerHeading = $('#content_value h2:contains("Account Manager"), #content_value h3:contains("Account Manager")');
 
         if (accountManagerHeading.length > 0) {
-            $(settingsButtonHtml).insertBefore(accountManagerHeading.first());
-            $(activateSoundButtonHtml).insertBefore($('#tw_auto_action_settings_button'));
-            $(toggleButtonHtml).insertBefore($('#tw_auto_action_activate_sound_button')); // NEU: Toggle-Button einfügen
+            $(mainContainerHtml).insertBefore(accountManagerHeading.first());
         } else {
             const contentValue = $('#content_value');
             if (contentValue.length > 0) {
-                contentValue.prepend(settingsButtonHtml);
-                contentValue.prepend(activateSoundButtonHtml);
-                contentValue.prepend(toggleButtonHtml); // NEU: Toggle-Button einfügen
+                contentValue.prepend(mainContainerHtml);
+                // Wenn prepend, muss man die fixed Position wieder hinzufügen,
+                // falls der Parent nicht fixed ist und das Skript nicht in einem Frame läuft.
+                // Aber hier ist es ja schon im HTML definiert.
             } else {
-                // Fallback für den Fall, dass Account Manager Überschrift oder content_value nicht gefunden wird
-                $('body').append(settingsButtonHtml);
-                $('body').append(activateSoundButtonHtml);
-                $('body').append(toggleButtonHtml); // NEU: Toggle-Button einfügen
-
-                // Anpassung der Positionierung für alle 3 Buttons
-                $('#tw_auto_action_settings_button').css({
-                    'position': 'fixed',
-                    'bottom': '10px',
-                    'right': '10px',
-                    'z-index': '10000',
-                    'margin-bottom': '0'
-                });
-                $('#tw_auto_action_activate_sound_button').css({
-                    'position': 'fixed',
-                    'bottom': '10px',
-                    'right': '180px', // Rechts vom Toggle-Button
-                    'z-index': '10000',
-                    'margin-bottom': '0'
-                });
-                $('#tw_auto_action_toggle_button').css({ // NEU: Position für Toggle-Button
-                    'position': 'fixed',
-                    'bottom': '10px',
-                    'right': '350px', // Ganz links
-                    'z-index': '10000',
-                    'margin-bottom': '0'
-                });
+                $('body').append(mainContainerHtml);
             }
         }
 
+        mainContainerRef = $('#tw_auto_action_main_container');
+        buttonsRowRef = $('#tw_auto_action_buttons_row');
+        statusBarRef = $('#tw_auto_action_status_bar');
+
+        // Buttons in die Buttons-Reihe einfügen
+        buttonsRowRef.append(settingsButtonHtml);
+        buttonsRowRef.append(activateSoundButtonHtml);
+        buttonsRowRef.append(toggleButtonHtml);
+
+        // Referenzen zu den eingefügten Buttons holen
         settingsButtonRef = $('#tw_auto_action_settings_button');
         activateSoundButtonRef = $('#tw_auto_action_activate_sound_button');
-        toggleButtonRef = $('#tw_auto_action_toggle_button'); // NEU: Referenz zuweisen
+        toggleButtonRef = $('#tw_auto_action_toggle_button');
 
+        // Event-Listener zuweisen
         if (settingsButtonRef.length > 0) {
             settingsButtonRef.on('click', (e) => {
                 e.preventDefault();
@@ -763,10 +789,11 @@
                 e.preventDefault();
                 playActivationTestTone(); // Ruft die spezielle Testton-Funktion auf (spielt ausgewählten Ton)
 
+                // Optional: Den Text des "Ton Aktivieren" Buttons dauerhaft ändern, wenn erfolgreich geklickt
                 activateSoundButtonRef.text('Ton Aktiv');
-                activateSoundButtonRef.css({
+                activateSoundButtonRef.css({ // Hier bleibt die Farbe fix nach Aktivierung
                     'background-color': '#d4edda',
-                    'color': '#155724',
+                    'color': '#155724', // Textfarbe nach Aktivierung
                     'border-color': '#28a745'
                 });
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
@@ -779,7 +806,6 @@
             }
         }
 
-        // NEU: Event-Listener für den Start/Stop-Button
         if (toggleButtonRef.length > 0) {
             toggleButtonRef.on('click', (e) => {
                 e.preventDefault();
@@ -791,7 +817,15 @@
             }
         }
 
-        updateUIStatus(); // Initiales Update des Status für alle Buttons und den Tab-Titel
+        // NEU: Breite der Statusleiste dynamisch anpassen, nachdem Buttons gerendert wurden
+        // Hier ein kleiner Timeout, um sicherzustellen, dass das Layout stabil ist
+        setTimeout(() => {
+             if (buttonsRowRef && statusBarRef) {
+                // Setze die Breite der Statusleiste auf die Breite der Buttons-Reihe
+                statusBarRef.width(buttonsRowRef.outerWidth());
+            }
+            updateUIStatus(); // Initiales Update des Status für alle Buttons und den Tab-Titel
+        }, 50); // Kleiner Timeout
     }
 
     // --- Skript-Initialisierung ---
@@ -800,17 +834,22 @@
     $(document).ready(function() {
         addAmFarmSettingsButton();
 
-        setTimeout(() => {
-            if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
-                let hotkeyDisplay = currentSettings.toggleKeyChar;
-                if (currentSettings.requiredCtrl) hotkeyDisplay = 'Strg + ' + hotkeyDisplay;
-                if (currentSettings.requiredAlt) hotkeyDisplay = 'Alt + ' + hotkeyDisplay;
-                if (currentSettings.requiredShift) hotkeyDisplay = 'Shift + ' + hotkeyDisplay;
-                hotkeyDisplay = hotkeyDisplay.replace(/\s\+\s$/, '');
+        // Zeige die initiale "Bereit"-Nachricht nur einmal an
+        if (!initialReadyMessageShown) {
+            setTimeout(() => {
+                if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                    let hotkeyDisplay = currentSettings.toggleKeyChar;
+                    if (currentSettings.requiredCtrl) hotkeyDisplay = 'Strg + ' + hotkeyDisplay;
+                    if (currentSettings.requiredAlt) hotkeyDisplay = 'Alt + ' + hotkeyDisplay;
+                    if (currentSettings.requiredShift) hotkeyDisplay = 'Shift + ' + hotkeyDisplay;
+                    hotkeyDisplay = hotkeyDisplay.replace(/\s\+\s$/, '');
 
-                UI.InfoMessage('TW Auto-Action (v' + SCRIPT_VERSION + ') ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
-            }
-        }, 1000);
+                    UI.InfoMessage('TW Auto-Action (v' + SCRIPT_VERSION + ') ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über den "Start/Stopp"-Button.', 3000);
+                }
+                initialReadyMessageShown = true;
+            }, 1000);
+        }
+
 
         const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] };
 
