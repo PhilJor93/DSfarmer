@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.25 // Version auf 3.25 aktualisiert - Tab-Titeländerung hinzugefügt
+// @version       3.26 // Version auf 3.26 aktualisiert - Start/Stop-Button hinzugefügt
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.25'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.26'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -282,7 +282,7 @@
                 } else if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
                     UI.ErrorMessage('Botschutz-Abfrage erkannt! Auto-Action ist nicht aktiv oder pausiert nicht automatisch.', 5000);
                 }
-                updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
             }
             return true;
         } else {
@@ -291,7 +291,7 @@
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Botschutz-Abfrage nicht mehr sichtbar. Auto-Action kann bei Bedarf wieder gestartet werden.', 3000);
                 }
-                updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
             }
             return false;
         }
@@ -310,7 +310,7 @@
             if (farmButton.length > 0 && farmButton.is(':visible') && !farmButton.is(':disabled')) {
                 if (noFarmButtonsDetected) {
                     noFarmButtonsDetected = false;
-                    updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                    updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
                 }
                 farmButton.trigger('click');
             } else {
@@ -329,7 +329,7 @@
                             UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
                         }
                     }
-                    updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                    updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
                 }
             }
         } else {
@@ -342,7 +342,7 @@
                 }
                 noFarmButtonsDetected = false;
                 botProtectionDetected = false;
-                updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
             }
         }
     }
@@ -397,7 +397,7 @@
                     UI.ErrorMessage('Kann Auto-Action nicht starten: Keine Farm-Buttons gefunden oder sie sind nicht sichtbar/aktiv.', 4000);
                 }
                 noFarmButtonsDetected = true;
-                updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
                 return;
             }
 
@@ -424,7 +424,7 @@
             }
             noFarmButtonsDetected = false;
         }
-        updateUIStatus(); // Aktualisiert auch den Tab-Titel
+        updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
     };
 
     // --- PRÄZISER SELEKTOR FÜR BELIEBIGEN FARMGOD BUTTON ---
@@ -595,7 +595,7 @@
                     UI.InfoMessage('Skript pausiert. Starte per Hotkey oder extern zum Neustart mit neuen Einstellungen.', 3000);
                 }
             }
-            updateUIStatus(); // Aktualisiert auch den Tab-Titel
+            updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
         });
 
         $('#tw_auto_action_close_settings').on('click', () => {
@@ -613,11 +613,13 @@
     // --- Einstellungs-Button auf der Farm-Seite hinzufügen ---
     let settingsButtonRef = null;
     let activateSoundButtonRef = null;
+    let toggleButtonRef = null; // NEU: Referenz für den Start/Stop-Button
 
     // Funktion zum Aktualisieren des UI-Status (Button-Text, Farbe und NEU: Tab-Titel)
     function updateUIStatus() {
         let currentTabTitle = originalDocumentTitle; // Startet mit dem Originaltitel
 
+        // Update Settings Button
         if (settingsButtonRef) {
             let statusText = autoActionActive ? ' (Aktiv)' : ' (Inaktiv)';
             let backgroundColor = autoActionActive ? '#d4edda' : '#f0e2b6';
@@ -647,6 +649,29 @@
                 'border-color': borderColor
             });
         }
+
+        // NEU: Update Toggle Button
+        if (toggleButtonRef) {
+            let toggleButtonText = autoActionActive ? 'Auto-Action Stopp' : 'Auto-Action Start';
+            let toggleButtonBg = autoActionActive ? '#d1b790' : '#d4edda'; // Rot-braun wenn aktiv, Grünlich wenn inaktiv
+            let toggleButtonColor = autoActionActive ? '#3b1e0a' : '#155724';
+            let toggleButtonBorder = autoActionActive ? '#6d3300' : '#28a745';
+
+            if (botProtectionDetected || noFarmButtonsDetected) {
+                toggleButtonText = 'Auto-Action (Pausiert)';
+                toggleButtonBg = '#fff3cd'; // Gelblich
+                toggleButtonColor = '#856404';
+                toggleButtonBorder = '#ffeeba';
+            }
+
+            toggleButtonRef.text(toggleButtonText);
+            toggleButtonRef.css({
+                'background-color': toggleButtonBg,
+                'color': toggleButtonColor,
+                'border-color': toggleButtonBorder
+            });
+        }
+
         document.title = currentTabTitle; // Setzt den Titel des Browser-Tabs
     }
 
@@ -667,20 +692,33 @@
             </a>
         `;
 
+        // NEU: HTML für den Start/Stop-Button
+        const toggleButtonHtml = `
+            <a href="#" id="tw_auto_action_toggle_button" class="btn" style="white-space: nowrap; margin-bottom: 10px; display: inline-block; margin-right: 5px;">
+                Auto-Action Start/Stopp
+            </a>
+        `;
+
+
         const accountManagerHeading = $('#content_value h2:contains("Account Manager"), #content_value h3:contains("Account Manager")');
 
         if (accountManagerHeading.length > 0) {
             $(settingsButtonHtml).insertBefore(accountManagerHeading.first());
             $(activateSoundButtonHtml).insertBefore($('#tw_auto_action_settings_button'));
+            $(toggleButtonHtml).insertBefore($('#tw_auto_action_activate_sound_button')); // NEU: Toggle-Button einfügen
         } else {
             const contentValue = $('#content_value');
             if (contentValue.length > 0) {
                 contentValue.prepend(settingsButtonHtml);
                 contentValue.prepend(activateSoundButtonHtml);
+                contentValue.prepend(toggleButtonHtml); // NEU: Toggle-Button einfügen
             } else {
+                // Fallback für den Fall, dass Account Manager Überschrift oder content_value nicht gefunden wird
                 $('body').append(settingsButtonHtml);
                 $('body').append(activateSoundButtonHtml);
+                $('body').append(toggleButtonHtml); // NEU: Toggle-Button einfügen
 
+                // Anpassung der Positionierung für alle 3 Buttons
                 $('#tw_auto_action_settings_button').css({
                     'position': 'fixed',
                     'bottom': '10px',
@@ -691,7 +729,14 @@
                 $('#tw_auto_action_activate_sound_button').css({
                     'position': 'fixed',
                     'bottom': '10px',
-                    'right': '180px',
+                    'right': '180px', // Rechts vom Toggle-Button
+                    'z-index': '10000',
+                    'margin-bottom': '0'
+                });
+                $('#tw_auto_action_toggle_button').css({ // NEU: Position für Toggle-Button
+                    'position': 'fixed',
+                    'bottom': '10px',
+                    'right': '350px', // Ganz links
                     'z-index': '10000',
                     'margin-bottom': '0'
                 });
@@ -700,6 +745,7 @@
 
         settingsButtonRef = $('#tw_auto_action_settings_button');
         activateSoundButtonRef = $('#tw_auto_action_activate_sound_button');
+        toggleButtonRef = $('#tw_auto_action_toggle_button'); // NEU: Referenz zuweisen
 
         if (settingsButtonRef.length > 0) {
             settingsButtonRef.on('click', (e) => {
@@ -732,7 +778,20 @@
                 UI.ErrorMessage("Auto-Action: Ton Aktivierungs-Button konnte nicht eingefügt werden.", 3000);
             }
         }
-        updateUIStatus();
+
+        // NEU: Event-Listener für den Start/Stop-Button
+        if (toggleButtonRef.length > 0) {
+            toggleButtonRef.on('click', (e) => {
+                e.preventDefault();
+                window.toggleTribalAutoAction(); // Ruft die globale Toggle-Funktion auf
+            });
+        } else {
+             if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
+                UI.ErrorMessage("Auto-Action: Start/Stop-Button konnte nicht eingefügt werden.", 3000);
+            }
+        }
+
+        updateUIStatus(); // Initiales Update des Status für alle Buttons und den Tab-Titel
     }
 
     // --- Skript-Initialisierung ---
@@ -781,12 +840,12 @@
                             }
                             if (!noFarmButtonsDetected) {
                                 noFarmButtonsDetected = true;
-                                updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
                             }
                         } else {
                             if (noFarmButtonsDetected) {
                                 noFarmButtonsDetected = false;
-                                updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
                             }
                         }
                     } else if (!botProtectionFound) {
@@ -795,7 +854,7 @@
                         if (noFarmButtonsDetected || botProtectionDetected) {
                             noFarmButtonsDetected = false;
                             botProtectionDetected = false;
-                            updateUIStatus(); // Aktualisiert auch den Tab-Titel
+                            updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
                         }
                     }
                 }
@@ -813,7 +872,7 @@
                 // updateUIStatus() wird hier bereits von checkAntiBotProtection() oder direkt nach addAmFarmSettingsButton() aufgerufen
             }
         }
-        updateUIStatus(); // Stellt sicher, dass der Titel initial korrekt gesetzt wird
+        updateUIStatus(); // Stellt sicher, dass der Titel initial korrekt gesetzt wird und die Buttons den korrekten Zustand haben
     });
 
 })();
