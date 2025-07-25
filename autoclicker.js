@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.34 // Version auf 3.34 aktualisiert - Statusleiste Breite nun pixelgenau per CSS
+// @version       3.35 // Version auf 3.35 aktualisiert - Statusleiste nun direkt neben den Buttons
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.34'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.35'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -724,13 +724,9 @@
         const activateSoundButtonHtml = `<a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle}">Ton Aktivieren</a>`;
         const settingsButtonHtml = `<a href="#" id="tw_auto_action_settings_button" class="btn" style="${buttonBaseStyle}">Auto-Action Einstellungen</a>`;
 
-        // Statusleiste HTML (nun absolut positioniert innerhalb von tw_auto_action_buttons_row)
+        // Statusleiste HTML - JETZT ALS NORMALES FLEX-ITEM, OHNE ABSOLUTE POSITIONIERUNG
         const statusBarHtml = `
             <div id="tw_auto_action_status_bar" style="
-                position: absolute;
-                top: 100%; /* Position unter den Buttons */
-                left: 0; /* Beginn am linken Rand des Button-Containers */
-                right: 0; /* Ende am rechten Rand des Button-Containers */
                 background-color: rgba(0,0,0,0.7);
                 color: white;
                 padding: 5px 10px;
@@ -740,18 +736,19 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                transform: translateY(5px); /* Zusätzlicher Abstand nach unten */
-                box-sizing: border-box; /* Sicherstellen, dass Padding/Border in die Breite fallen */
+                box-sizing: border-box; /* Wichtig für korrekte Breitenberechnung mit Padding/Border */
+                flex-grow: 1; /* Lässt die Statusleiste den restlichen Platz ausfüllen */
+                min-width: 50px; /* Verhindert zu starkes Schrumpfen */
             ">
                 TW Auto-Action ist bereit.
             </div>
         `;
 
         // Haupt-Container für Buttons und Statusleiste
-        // buttons_row ist nun 'position: relative;' damit statusBarHtml absolut innerhalb positioniert werden kann
+        // buttons_row enthält nun alle Elemente nebeneinander
         const mainContainerHtml = `
             <div id="tw_auto_action_main_container" style="margin-bottom: 15px; margin-top: 5px; width: 100%; box-sizing: border-box;">
-                <div id="tw_auto_action_buttons_row" style="position: relative; display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 10px;">
+                <div id="tw_auto_action_buttons_row" style="display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 10px;">
                     ${toggleButtonHtml}
                     ${activateSoundButtonHtml}
                     ${settingsButtonHtml}
@@ -767,7 +764,7 @@
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
         activateSoundButtonRef = mainContainerRef.find('#tw_auto_action_activate_sound_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
-        statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar'); // Statusleiste ist jetzt ein Kind von buttons_row, aber find funktioniert weiterhin global
+        statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
 
         // Event-Listener zuweisen
         if (settingsButtonRef.length > 0) {
@@ -795,9 +792,6 @@
                 window.toggleTribalAutoAction();
             });
         }
-
-        // KEINE BREITENBERECHNUNG MEHR PER JAVASCRIPT
-        // Die Breite wird nun automatisch durch left:0; right:0; innerhalb des position:relative; containers gesteuert.
 
         updateUIStatus(); // Initiales Update des Status für alle Elemente
     }
