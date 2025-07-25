@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.21 // Version auf 3.21 aktualisiert - Fehlerbehebung Testton Aktivierungsbutton
+// @version       3.23 // Version auf 3.23 aktualisiert - "Ton Aktivieren" Button spielt ausgewählten Sound
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,16 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.21'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.23'; // Die aktuelle Version des Skripts
+
+    // --- Sound-Profile Definitionen ---
+    // Hier können weitere Sounds hinzugefügt oder bestehende angepasst werden
+    const soundProfiles = {
+        'default': { name: 'Standard (Hell)', frequency: 660, type: 'sine', duration: 0.8, volume: 0.5 },
+        'alarm': { name: 'Alarm (Kurz & Hoch)', frequency: 880, type: 'triangle', duration: 0.4, volume: 0.6 },
+        'chime': { name: 'Glocke (Tief & Langsam)', frequency: 440, type: 'sine', duration: 1.2, volume: 0.4 },
+        'beep': { name: 'Beep (Standard-Signal)', frequency: 750, type: 'square', duration: 0.2, volume: 0.7 }
+    };
 
     // --- Standardeinstellungen ---
     const defaultSettings = {
@@ -29,7 +38,8 @@
         requiredAlt: false,
         requiredShift: true,
         pauseOnBotProtection: true, // Einstellung: Bei Botschutz pausieren
-        soundEnabled: true // Botschutz-Ton aktiviert
+        soundEnabled: true, // Botschutz-Ton aktiviert
+        selectedSound: 'default' // NEU: Standard: 'default' Sound
     };
     let currentSettings = {}; // Wird aus localStorage geladen
 
@@ -46,6 +56,10 @@
                     if (currentSettings.toggleKeyCode === 'Space') currentSettings.toggleKeyChar = ' ';
                 } else if (currentSettings.toggleKeyChar && !currentSettings.toggleKeyCode) { // Fallback, falls Char da, aber Code fehlt
                     currentSettings.toggleKeyCode = getKeyCodeFromChar(currentSettings.toggleKeyChar);
+                }
+                // Sicherstellen, dass der ausgewählte Sound existiert, sonst auf 'default' zurückfallen
+                if (!soundProfiles[currentSettings.selectedSound]) {
+                    currentSettings.selectedSound = 'default';
                 }
             } catch (e) {
                 console.error("Auto-Action: Fehler beim Laden der Einstellungen, verwende Standardeinstellungen:", e);
@@ -89,8 +103,8 @@
     // --- AudioContext und Sound-Funktionen ---
     let audioCtx = null; // Globale Referenz für AudioContext
 
-    // Funktion zum Erzeugen und Abspielen eines Oszillators
-    function createAndPlayOscillator() {
+    // Funktion zum Erzeugen und Abspielen eines Oszillators mit Profil-Parametern
+    function createAndPlayOscillator(profile) {
         if (!audioCtx || audioCtx.state === 'closed') {
             console.warn('TW Auto-Action: AudioContext nicht bereit für die Wiedergabe des Oszillators.');
             return;
@@ -102,16 +116,16 @@
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(660, audioCtx.currentTime); // Frequenz (A#5)
-            gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); // Lautstärke
+            oscillator.type = profile.type;
+            oscillator.frequency.setValueAtTime(profile.frequency, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(profile.volume, audioCtx.currentTime);
 
             oscillator.start();
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8); // Ton ausfaden
-            oscillator.stop(audioCtx.currentTime + 0.8);
-            console.log('TW Auto-Action: Oszillator-Ton gestartet.');
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + profile.duration);
+            oscillator.stop(audioCtx.currentTime + profile.duration);
+            console.log(`TW Auto-Action: Oszillator-Ton '${profile.name}' gestartet.`);
         } catch (e) {
-            console.error("TW Auto-Action: FEHLER beim Erzeugen oder Starten des Oszillators.", e); // Verbesserte Fehlermeldung
+            console.error("TW Auto-Action: FEHLER beim Erzeugen oder Starten des Oszillators.", e);
         }
     }
 
@@ -130,8 +144,9 @@
             }
 
             const actuallyPlaySound = () => {
+                 const profile = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
                  console.log('TW Auto-Action: Botschutz-Ton wird abgespielt.');
-                 createAndPlayOscillator();
+                 createAndPlayOscillator(profile);
             };
 
             if (audioCtx.state === 'suspended') {
@@ -140,7 +155,7 @@
                     console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt (durch Botschutz-Trigger).');
                     actuallyPlaySound();
                 }).catch(e => {
-                    console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext (durch Botschutz-Trigger).", e); // Verbesserte Fehlermeldung
+                    console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext (durch Botschutz-Trigger).", e);
                 });
             } else if (audioCtx.state === 'running') {
                 console.log('TW Auto-Action: AudioContext läuft bereits (durch Botschutz-Trigger).');
@@ -149,11 +164,11 @@
                 console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand (durch Botschutz-Trigger):', audioCtx.state);
             }
         } catch (e) {
-            console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Anti-Bot-Sounds (durch Botschutz-Trigger).", e); // Verbesserte Fehlermeldung
+            console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Anti-Bot-Sounds (durch Botschutz-Trigger).", e);
         }
     }
 
-    // Funktion für den Aktivierungs-Test-Ton (spielt IMMER, entsperrt Context)
+    // Funktion für den Aktivierungs-Test-Ton (spielt den aktuell ausgewählten Ton, entsperrt Context)
     function playActivationTestTone() {
         console.log('TW Auto-Action: Test-Ton durch Aktivierungs-Button angefordert...');
         try {
@@ -162,22 +177,57 @@
                 console.log('TW Auto-Action: AudioContext initialisiert (durch Aktivierungs-Button). Zustand:', audioCtx.state);
             }
 
+            // NEU: Verwende das aktuell ausgewählte Sound-Profil für den Testton
+            const profileToPlay = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
+
             if (audioCtx.state === 'suspended') {
                 console.log('TW Auto-Action: AudioContext ist ausgesetzt (durch Aktivierungs-Button), versuche Fortsetzung...');
                 audioCtx.resume().then(() => {
                     console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt (durch Aktivierungs-Button), spiele Test-Ton ab.');
-                    createAndPlayOscillator();
+                    createAndPlayOscillator(profileToPlay);
                 }).catch(e => {
-                    console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext (durch Aktivierungs-Button).", e); // Verbesserte Fehlermeldung
+                    console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext (durch Aktivierungs-Button).", e);
                 });
             } else if (audioCtx.state === 'running') {
                 console.log('TW Auto-Action: AudioContext läuft bereits (durch Aktivierungs-Button), spiele Test-Ton ab.');
-                createAndPlayOscillator();
+                createAndPlayOscillator(profileToPlay);
             } else {
                 console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand (durch Aktivierungs-Button):', audioCtx.state);
             }
         } catch (e) {
-            console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Test-Tons (durch Aktivierungs-Button).", e); // Verbesserte Fehlermeldung
+            console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Test-Tons (durch Aktivierungs-Button).", e);
+        }
+    }
+
+    // Funktion zum Abspielen des ausgewählten Sounds aus den Einstellungen (für Vorschau)
+    function playSelectedSoundPreview() {
+        const selectedKey = $('#setting_selected_sound').val();
+        const profile = soundProfiles[selectedKey] || soundProfiles['default']; // Fallback auf Standard
+
+        console.log(`TW Auto-Action: Spiele Vorschau-Ton: ${profile.name}`);
+
+        try {
+            if (!audioCtx || audioCtx.state === 'closed') {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('TW Auto-Action: AudioContext initialisiert (für Vorschau). Zustand:', audioCtx.state);
+            }
+
+            if (audioCtx.state === 'suspended') {
+                console.log('TW Auto-Action: AudioContext ist ausgesetzt (für Vorschau), versuche Fortsetzung...');
+                audioCtx.resume().then(() => {
+                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt (für Vorschau).');
+                    createAndPlayOscillator(profile);
+                }).catch(e => {
+                    console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext (für Vorschau).", e);
+                });
+            } else if (audioCtx.state === 'running') {
+                console.log('TW Auto-Action: AudioContext läuft bereits (für Vorschau).');
+                createAndPlayOscillator(profile);
+            } else {
+                console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand (für Vorschau):', audioCtx.state);
+            }
+        } catch (e) {
+            console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Vorschau-Tons.", e);
         }
     }
 
@@ -424,6 +474,23 @@
                         align-items: center;
                         margin-bottom: 5px;
                     }
+                    #tw_auto_action_settings_dialog_content select {
+                        width: calc(100% - 80px); /* Angepasst für Button */
+                        padding: 5px;
+                        box-sizing: border-box;
+                        border: 1px solid #c2c2c2;
+                        border-radius: 3px;
+                        display: inline-block;
+                        vertical-align: middle;
+                    }
+                    #tw_auto_action_settings_dialog_content #tw_auto_action_preview_sound {
+                        width: auto;
+                        padding: 5px 10px;
+                        margin-left: 5px;
+                        margin-top: 0; /* Wichtig, damit es in der Reihe bleibt */
+                        display: inline-block;
+                        vertical-align: middle;
+                    }
                 </style>
                 <table class="vis">
                     <tr>
@@ -452,7 +519,15 @@
                     </tr>
                     <tr>
                         <th>Botschutz-Ton</th>
-                        <td><input type="checkbox" id="setting_sound_enabled" ${currentSettings.soundEnabled ? 'checked' : ''}> Ton abspielen</td>
+                        <td>
+                            <label><input type="checkbox" id="setting_sound_enabled" ${currentSettings.soundEnabled ? 'checked' : ''}> Ton abspielen</label><br>
+                            <select id="setting_selected_sound">
+                                ${Object.keys(soundProfiles).map(key => `
+                                    <option value="${key}" ${currentSettings.selectedSound === key ? 'selected' : ''}>${soundProfiles[key].name}</option>
+                                `).join('')}
+                            </select>
+                            <button id="tw_auto_action_preview_sound" class="btn">Hören</button>
+                        </td>
                     </tr>
                 </table>
                 <button id="tw_auto_action_save_settings" class="btn">Speichern</button>
@@ -495,6 +570,7 @@
             currentSettings.maxInterval = newMaxInterval;
             currentSettings.pauseOnBotProtection = $('#setting_pause_on_bot_protection').is(':checked');
             currentSettings.soundEnabled = $('#setting_sound_enabled').is(':checked');
+            currentSettings.selectedSound = $('#setting_selected_sound').val(); // Ausgewählten Sound speichern
 
             saveSettings();
             customDialogElement.remove();
@@ -517,6 +593,12 @@
         $('#tw_auto_action_close_settings').on('click', () => {
             customDialogElement.remove();
             customDialogElement = null;
+        });
+
+        // Klick-Handler für den "Hören"-Button im Einstellungsdialog
+        $('#tw_auto_action_preview_sound').on('click', (e) => {
+            e.preventDefault();
+            playSelectedSoundPreview();
         });
     }
 
@@ -617,7 +699,7 @@
         if (activateSoundButtonRef.length > 0) {
             activateSoundButtonRef.on('click', (e) => {
                 e.preventDefault();
-                playActivationTestTone(); // Ruft die spezielle Testton-Funktion auf
+                playActivationTestTone(); // Ruft die spezielle Testton-Funktion auf (spielt ausgewählten Ton)
 
                 activateSoundButtonRef.text('Ton Aktiv');
                 activateSoundButtonRef.css({
