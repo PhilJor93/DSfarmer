@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.29 // Version auf 3.29 aktualisiert - Positionierung wie v3.20 wiederhergestellt
+// @version       3.30 // Version auf 3.30 aktualisiert - Feste Positionierung für Buttons und Statusleiste
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.29'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.30'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -731,9 +731,10 @@
             </a>
         `;
 
-        // HTML für die Statusleiste (Positionierung wird dynamisch angepasst)
+        // HTML für die Statusleiste (positioniert unter den Buttons)
+        // Breite (500px) und right (10px) sind so gewählt, dass sie die drei Buttons überspannen.
         const statusBarHtml = `
-            <div id="tw_auto_action_status_bar" style="position: fixed; bottom: 5px; z-index: 99999; color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background-color: rgba(0,0,0,0.7);">
+            <div id="tw_auto_action_status_bar" style="position: fixed; bottom: 5px; right: 10px; width: 500px; z-index: 99999; color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background-color: rgba(0,0,0,0.7);">
                 TW Auto-Action ist bereit.
             </div>
         `;
@@ -792,24 +793,9 @@
             }
         }
 
-        // NEU: Breite und linke Position der Statusleiste dynamisch anpassen
-        // Dies muss NACHDEM die Buttons im DOM sind und gerendert wurden, damit outerWidth() korrekt ist.
-        setTimeout(() => {
-             if (settingsButtonRef.length && activateSoundButtonRef.length && toggleButtonRef.length && statusBarRef.length) {
-                // Die Statusleiste rechts mit dem Settings-Button ausrichten
-                statusBarRef.css('right', '10px'); // Gleiche rechte Position wie Settings Button
-
-                // Die linke Position der Statusleiste am linken Rand des Toggle-Buttons ausrichten
-                const toggleButtonLeft = toggleButtonRef.offset().left;
-                statusBarRef.css('left', toggleButtonLeft + 'px');
-
-                // Die Breite der Statusleiste auf die Spanne der Buttons setzen
-                const settingsButtonRightEdge = settingsButtonRef.offset().left + settingsButtonRef.outerWidth();
-                const calculatedWidth = settingsButtonRightEdge - toggleButtonLeft;
-                statusBarRef.width(calculatedWidth);
-            }
-            updateUIStatus(); // Initiales Update des Status für alle Elemente
-        }, 50); // Kleiner Timeout, um Rendering sicherzustellen
+        // Initiales Update des Status für alle Elemente (Titel, Farben)
+        // Keine setTimeout für Breitenberechnung mehr nötig, da Breite fest gesetzt ist.
+        // updateUIStatus() wird am Ende von $(document).ready() aufgerufen.
     }
 
     // --- Skript-Initialisierung ---
