@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.30 // Version auf 3.30 aktualisiert - Feste Positionierung für Buttons und Statusleiste
+// @version       3.31 // Version auf 3.31 aktualisiert - Positionierung oberhalb "Account-Manager" (im Seiteninhalt)
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.30'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.31'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -616,6 +616,7 @@
     let activateSoundButtonRef = null;
     let toggleButtonRef = null;
     let statusBarRef = null; // Referenz auf die Statusleiste
+    let mainContainerRef = null; // Neue Referenz für den Haupt-Container
 
 
     // Funktion zum Aktualisieren des UI-Status (Button-Text, Farbe und NEU: Tab-Titel & Statusleiste)
@@ -662,7 +663,7 @@
         if (botProtectionDetected) {
             statusBarBgColor = '#dc3545'; // Rot
             currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
-            currentStatusText = '[BOTSCHUTZ] Auto-Action pausiert!';
+            currentStatusText = '[BOTSCHUTSCHUTZ] Auto-Action pausiert!';
         } else if (autoActionActive) {
             statusBarBgColor = '#28a745'; // Grün
             currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
@@ -696,11 +697,16 @@
             return;
         }
 
-        // Grundlegende Styles für alle Buttons (festgelegt)
+        // Versuche, den Einfügepunkt zu finden: die erste Überschrift im content_value div
+        const targetHeading = $('#content_value').find('h3:contains("Farm-Assistent"), h2:contains("Account Manager"), h4.screen-title:contains("Account-Manager")').first();
+
+        if (targetHeading.length === 0) {
+            console.warn("TW Auto-Action: Konnte keine passende Überschrift für 'Account-Manager' finden, um Buttons einzufügen. Buttons werden nicht angezeigt.");
+            return;
+        }
+
+        // Grundlegende Styles für alle Buttons (keine feste Positionierung mehr)
         const buttonBaseStyle = `
-            position: fixed;
-            bottom: 10px;
-            z-index: 100000;
             white-space: nowrap;
             display: inline-block;
             padding: 8px 15px;
@@ -712,45 +718,40 @@
             border: 1px solid #804000; /* Feste neutrale Rahmenfarbe */
         `;
 
-        // HTML für die Buttons mit ihren spezifischen right-Positionen
-        const settingsButtonHtml = `
-            <a href="#" id="tw_auto_action_settings_button" class="btn" style="${buttonBaseStyle} right: 10px;">
-                Auto-Action Einstellungen
-            </a>
-        `;
+        // HTML für die Buttons (Reihenfolge hier ist wichtig für flexbox justify-content: flex-end)
+        // Visuell: Start/Stopp (links) -- Ton Aktivieren (Mitte) -- Einstellungen (rechts)
+        const toggleButtonHtml = `<a href="#" id="tw_auto_action_toggle_button" class="btn" style="${buttonBaseStyle}">Auto-Action Start/Stopp</a>`;
+        const activateSoundButtonHtml = `<a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle}">Ton Aktivieren</a>`;
+        const settingsButtonHtml = `<a href="#" id="tw_auto_action_settings_button" class="btn" style="${buttonBaseStyle}">Auto-Action Einstellungen</a>`;
 
-        const activateSoundButtonHtml = `
-            <a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle} right: 180px;">
-                Ton Aktivieren
-            </a>
-        `;
-
-        const toggleButtonHtml = `
-            <a href="#" id="tw_auto_action_toggle_button" class="btn" style="${buttonBaseStyle} right: 350px;">
-                Auto-Action Start/Stopp
-            </a>
-        `;
-
-        // HTML für die Statusleiste (positioniert unter den Buttons)
-        // Breite (500px) und right (10px) sind so gewählt, dass sie die drei Buttons überspannen.
+        // Statusleiste HTML (keine feste Positionierung, sondern Teil des Seitenflusses)
         const statusBarHtml = `
-            <div id="tw_auto_action_status_bar" style="position: fixed; bottom: 5px; right: 10px; width: 500px; z-index: 99999; color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background-color: rgba(0,0,0,0.7);">
+            <div id="tw_auto_action_status_bar" style="background-color: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 5px;">
                 TW Auto-Action ist bereit.
             </div>
         `;
 
-        // Buttons und Statusleiste direkt zum Body hinzufügen
-        $('body').append(settingsButtonHtml);
-        $('body').append(activateSoundButtonHtml);
-        $('body').append(toggleButtonHtml);
-        $('body').append(statusBarHtml);
+        // Haupt-Container für Buttons und Statusleiste
+        const mainContainerHtml = `
+            <div id="tw_auto_action_main_container" style="margin-bottom: 15px; margin-top: 5px; width: 100%; box-sizing: border-box;">
+                <div id="tw_auto_action_buttons_row" style="display: flex; justify-content: flex-end; gap: 10px; align-items: center; margin-bottom: 5px;">
+                    ${toggleButtonHtml}
+                    ${activateSoundButtonHtml}
+                    ${settingsButtonHtml}
+                </div>
+                ${statusBarHtml}
+            </div>
+        `;
 
+        // Gesamten Container vor der gefundenen Überschrift einfügen
+        mainContainerRef = $(mainContainerHtml);
+        targetHeading.before(mainContainerRef);
 
         // Referenzen zu den eingefügten Elementen holen
-        settingsButtonRef = $('#tw_auto_action_settings_button');
-        activateSoundButtonRef = $('#tw_auto_action_activate_sound_button');
-        toggleButtonRef = $('#tw_auto_action_toggle_button');
-        statusBarRef = $('#tw_auto_action_status_bar');
+        toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
+        activateSoundButtonRef = mainContainerRef.find('#tw_auto_action_activate_sound_button');
+        settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
+        statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
 
         // Event-Listener zuweisen
         if (settingsButtonRef.length > 0) {
@@ -758,44 +759,28 @@
                 e.preventDefault();
                 openSettingsDialog();
             });
-        } else {
-            if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
-                UI.ErrorMessage("Auto-Action: Einstellungs-Button konnte nicht eingefügt werden. Skript-Fehler.", 3000);
-            }
         }
 
         if (activateSoundButtonRef.length > 0) {
             activateSoundButtonRef.on('click', (e) => {
                 e.preventDefault();
-                playActivationTestTone(); // Ruft die spezielle Testton-Funktion auf (spielt ausgewählten Ton)
-
-                // Setzt den Text des Buttons dauerhaft auf "Ton Aktiv"
+                playActivationTestTone();
                 activateSoundButtonRef.text('Ton Aktiv');
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Ton aktiviert! Er bleibt aktiv, bis die Seite komplett neu geladen wird.', 3000);
                 }
-                updateUIStatus(); // Aktualisiert, damit die Statusleiste evtl. ihre Farbe aktualisiert
+                updateUIStatus();
             });
-        } else {
-            if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
-                UI.ErrorMessage("Auto-Action: Ton Aktivierungs-Button konnte nicht eingefügt werden.", 3000);
-            }
         }
 
         if (toggleButtonRef.length > 0) {
             toggleButtonRef.on('click', (e) => {
                 e.preventDefault();
-                window.toggleTribalAutoAction(); // Ruft die globale Toggle-Funktion auf
+                window.toggleTribalAutoAction();
             });
-        } else {
-             if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
-                UI.ErrorMessage("Auto-Action: Start/Stop-Button konnte nicht eingefügt werden.", 3000);
-            }
         }
 
-        // Initiales Update des Status für alle Elemente (Titel, Farben)
-        // Keine setTimeout für Breitenberechnung mehr nötig, da Breite fest gesetzt ist.
-        // updateUIStatus() wird am Ende von $(document).ready() aufgerufen.
+        updateUIStatus(); // Initiales Update des Status für alle Elemente
     }
 
     // --- Skript-Initialisierung ---
