@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.5 // Version auf 3.5 aktualisiert für verbesserten Botschutz-Stopp
+// @version       3.6 // Version auf 3.6 aktualisiert für automatischen Stopp bei fehlenden Farm-Buttons
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -75,45 +75,40 @@
     let autoActionActive = false;
     let autoActionIntervalId = null;
     let botProtectionDetected = false; // Neuer Status für Botschutz
+    let noFarmButtonsDetected = false; // Neuer Status für fehlende Farm-Buttons
 
     // --- Hilfsfunktion zum Generieren eines zufälligen Intervalls ---
     function getRandomInterval(min, max) {
         return Math.floor(Math.random() * (max - min + 1)) + min;
     }
 
-    // --- NEUE FUNKTION: Botschutz-Erkennung ---
+    // --- Botschutz-Erkennung ---
     function checkAntiBotProtection() {
-        // Dies sind generische Selektoren. Du musst diese möglicherweise anpassen,
-        // basierend auf den tatsächlichen HTML-Strukturen, die Tribal Wars für Botschutz verwendet.
-        // Beispiele für mögliche Selektoren:
         const botProtectionSelectors = [
-            '#bot_protect_dialog',       // Eine gängige ID für Bot-Schutz-Dialoge
-            '.popup_box_container:contains("Sicherheitsabfrage")', // Ein Popup mit spezifischem Text
-            'div[data-bot-check="true"]', // Ein Data-Attribut, falls vorhanden
-            'img[src*="captcha"]',       // Ein Bild-Captcha
-            'input[name="captcha_code"]', // Ein Eingabefeld für Captcha
-            '.popup_box:contains("Botschutz")', // Ein generisches Popup mit dem Wort "Botschutz"
-            '.modem-window:contains("Sicherheitsprüfung")', // Ein weiteres generisches Popup
-            '#recaptcha-challenge',      // Google reCAPTCHA, falls verwendet
-            '#bot_captcha_div',          // Häufige ID für Captcha-Container
-            'div.error:contains("Bitte bestätigen Sie, dass Sie kein Bot sind.")' // Fehlermeldung bei fehlgeschlagenem Captcha
+            '#bot_protect_dialog',
+            '.popup_box_container:contains("Sicherheitsabfrage")',
+            'div[data-bot-check="true"]',
+            'img[src*="captcha"]',
+            'input[name="captcha_code"]',
+            '.popup_box:contains("Botschutz")',
+            '.modem-window:contains("Sicherheitsprüfung")',
+            '#recaptcha-challenge',
+            '#bot_captcha_div',
+            'div.error:contains("Bitte bestätigen Sie, dass Sie kein Bot sind.")'
         ];
 
         let isBotProtectionVisible = false;
         for (const selector of botProtectionSelectors) {
             const element = $(selector);
             if (element.length > 0 && element.is(':visible')) {
-                // Zusätzliche Prüfungen auf Textinhalt können hilfreich sein, aber 'visible' ist oft ausreichend
-                // Wir suchen hier nach jedem sichtbaren Element, das auf Botschutz hindeutet.
                 isBotProtectionVisible = true;
-                break; // Sobald eines gefunden wird, reicht es
+                break;
             }
         }
 
         if (isBotProtectionVisible) {
-            if (!botProtectionDetected) { // Nur einmal melden, wenn neu erkannt
+            if (!botProtectionDetected) {
                 botProtectionDetected = true;
-                // Sofort stoppen und rote Fehlermeldung anzeigen
                 if (autoActionActive && currentSettings.pauseOnBotProtection) {
                     clearInterval(autoActionIntervalId);
                     autoActionIntervalId = null;
@@ -122,15 +117,14 @@
                         UI.ErrorMessage('Botschutz-Abfrage erkannt! Auto-Action wurde gestoppt!', 5000);
                     }
                     console.warn('TW Auto-Action: Botschutz-Abfrage erkannt. Skript gestoppt.');
-                    updateUIStatus(); // UI-Status aktualisieren
                 } else if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
-                     // Melden, auch wenn pauseOnBotProtection deaktiviert ist, aber Botschutz erkannt
                     UI.ErrorMessage('Botschutz-Abfrage erkannt! Auto-Action ist nicht aktiv oder pausiert nicht automatisch.', 5000);
                 }
+                updateUIStatus(); // UI-Status aktualisieren
             }
             return true; // Botschutz erkannt
         } else {
-            if (botProtectionDetected) { // Wenn Botschutz zuvor erkannt wurde, aber jetzt nicht mehr sichtbar ist
+            if (botProtectionDetected) {
                 botProtectionDetected = false;
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Botschutz-Abfrage nicht mehr sichtbar. Auto-Action kann bei Bedarf wieder gestartet werden.', 3000);
@@ -146,15 +140,40 @@
     function simulateButtonClick() {
         // Diese Funktion wird nur aktiv, wenn wir auf der am_farm Seite sind
         if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
+            // Zuerst Botschutz prüfen
             if (checkAntiBotProtection()) {
-                // Botschutz erkannt, Klick überspringen. checkAntiBotProtection hat bereits gestoppt.
+                // Botschutz erkannt, Klick überspringen. checkAntiBotProtection hat bereits gestoppt, falls aktiviert.
                 return;
             }
 
             const farmButton = $(FARM_BUTTON_SELECTOR).first(); // Finde den ersten FarmGod Button
 
             if (farmButton.length > 0 && farmButton.is(':visible') && !farmButton.is(':disabled')) {
+                // Buttons gefunden, vorherige "Keine Buttons" Meldung zurücksetzen
+                if (noFarmButtonsDetected) {
+                    noFarmButtonsDetected = false;
+                    updateUIStatus(); // UI aktualisieren, da Buttons wieder da sind
+                }
                 farmButton.trigger('click'); // Löst den Klick-Event des FarmGod-Buttons aus
+            } else {
+                // Keine Farm-Buttons gefunden oder sie sind nicht sichtbar/deaktiviert
+                if (!noFarmButtonsDetected) { // Nur einmal melden, wenn neu erkannt
+                    noFarmButtonsDetected = true;
+                    if (autoActionActive) {
+                        clearInterval(autoActionIntervalId);
+                        autoActionIntervalId = null;
+                        autoActionActive = false;
+                        if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                            UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar. Auto-Action gestoppt!', 3000);
+                        }
+                        console.log('TW Auto-Action: Keine Farm-Buttons gefunden oder sichtbar. Skript gestoppt.');
+                    } else {
+                         if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                            UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
+                        }
+                    }
+                    updateUIStatus(); // UI-Status aktualisieren
+                }
             }
         } else {
             // Wenn wir nicht auf der Farm-Seite sind und der Clicker aktiv ist, stoppen wir ihn
@@ -165,6 +184,8 @@
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Auto-Action automatisch gestoppt (nicht auf Farm-Seite).', 3000);
                 }
+                noFarmButtonsDetected = false; // Zurücksetzen, da Seitenwechsel
+                botProtectionDetected = false; // Auch zurücksetzen
                 updateUIStatus();
             }
         }
@@ -194,11 +215,24 @@
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 UI.InfoMessage('Auto-Action gestoppt.', 2000);
             }
+            noFarmButtonsDetected = false; // Zurücksetzen beim manuellen Stopp
+            botProtectionDetected = false; // Auch zurücksetzen
         } else {
             // Vor dem Start prüfen, ob Botschutz aktiv ist
             if (checkAntiBotProtection()) {
                 // checkAntiBotProtection() stoppt das Skript bereits und zeigt die Meldung.
                 return; // Skript nicht starten, wenn Botschutz aktiv
+            }
+
+            // Vor dem Start prüfen, ob Farm-Buttons überhaupt vorhanden sind
+            const farmButtonCheck = $(FARM_BUTTON_SELECTOR).first();
+            if (farmButtonCheck.length === 0 || !farmButtonCheck.is(':visible') || farmButtonCheck.is(':disabled')) {
+                if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
+                    UI.ErrorMessage('Kann Auto-Action nicht starten: Keine Farm-Buttons gefunden oder sie sind nicht sichtbar/aktiv.', 4000);
+                }
+                noFarmButtonsDetected = true; // Status setzen
+                updateUIStatus();
+                return; // Skript nicht starten
             }
 
             autoActionActive = true;
@@ -209,7 +243,7 @@
             const initialInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
             autoActionIntervalId = setInterval(() => {
                 simulateButtonClick();
-                // Nach dem ersten Klick (oder auch wenn kein Klick stattfand wegen Botschutz),
+                // Nach dem ersten Klick (oder auch wenn kein Klick stattfand wegen Botschutz/fehlender Buttons),
                 // das Intervall für den nächsten Klick setzen
                 clearInterval(autoActionIntervalId); // Altes Intervall löschen
                 if (autoActionActive) { // Nur neues Intervall setzen, wenn noch aktiv
@@ -226,6 +260,7 @@
 
                 UI.InfoMessage('Auto-Action gestartet! (Hotkey: ' + hotkeyDisplay + ' zum Stoppen)', 3000);
             }
+            noFarmButtonsDetected = false; // Zurücksetzen beim erfolgreichen Start
         }
         updateUIStatus(); // UI-Status aktualisieren (z.B. den Button-Text)
     };
@@ -382,7 +417,7 @@
         });
     }
 
-    // --- Einstellungs-Button auf der Farm-Seite hinzufügen (exakt wie zuvor besprochen) ---
+    // --- Einstellungs-Button auf der Farm-Seite hinzufügen ---
     let settingsButtonRef = null; // Referenz zum Einstellungs-Button für Status-Updates
 
     function updateUIStatus() {
@@ -397,6 +432,11 @@
                 backgroundColor = '#f8d7da'; // Helles Rot
                 textColor = '#721c24';     // Dunkles Rot
                 borderColor = '#dc3545';   // Roter Rand
+            } else if (noFarmButtonsDetected) { // Neuer Status für fehlende Buttons
+                statusText = ' (Keine Farm-Buttons gefunden - Inaktiv)';
+                backgroundColor = '#fff3cd'; // Gelblich
+                textColor = '#856404';     // Dunkelgelb
+                borderColor = '#ffeeba';   // Gelber Rand
             }
 
             settingsButtonRef.text('Auto-Action Einstellungen' + statusText);
@@ -410,7 +450,6 @@
 
 
     function addAmFarmSettingsButton() {
-        // Sicherstellen, dass dieser Button nur auf der am_farm Seite hinzugefügt wird
         if (typeof game_data === 'undefined' || game_data.screen !== 'am_farm') {
             return;
         }
@@ -420,7 +459,6 @@
                 Auto-Action Einstellungen
             </a>
         `;
-        // Target the "Account Manager" heading
         const accountManagerHeading = $('#content_value h2:contains("Account Manager"), #content_value h3:contains("Account Manager")');
 
         if (accountManagerHeading.length > 0) {
@@ -430,7 +468,6 @@
             if (contentValue.length > 0) {
                 contentValue.prepend(settingsButtonHtml);
             } else {
-                // Fallback für den Fall, dass content_value nicht gefunden wird (unwahrscheinlich)
                 $('body').append(settingsButtonHtml);
                 $('#tw_auto_action_settings_button').css({
                     'position': 'fixed',
@@ -442,7 +479,7 @@
             }
         }
 
-        settingsButtonRef = $('#tw_auto_action_settings_button'); // Referenz speichern
+        settingsButtonRef = $('#tw_auto_action_settings_button');
         if (settingsButtonRef.length > 0) {
             settingsButtonRef.on('click', (e) => {
                 e.preventDefault();
@@ -461,7 +498,6 @@
     loadSettings();
 
     $(document).ready(function() {
-        // Füge den Einstellungs-Button nur hinzu, wenn wir auf der Farm-Seite sind
         addAmFarmSettingsButton();
 
         setTimeout(() => {
@@ -472,35 +508,64 @@
                 if (currentSettings.requiredShift) hotkeyDisplay = 'Shift + ' + hotkeyDisplay;
                 hotkeyDisplay = hotkeyDisplay.replace(/\s\+\s$/, '');
 
-                UI.InfoMessage('TW Auto-Action (v3.5) ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
+                UI.InfoMessage('TW Auto-Action (v3.6) ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
             }
         }, 1000);
 
-        // Überwache das DOM auf Änderungen, die auf Botschutz hindeuten könnten
-        // Dies ist eine fortgeschrittene Technik, um Botschutz zu erkennen, der dynamisch auftaucht.
-        // Beachte: DOM-Beobachter können performancelastig sein, wenn sie zu breit gefächert sind.
-        const observerConfig = { childList: true, subtree: true, attributes: true }; // 'attributes' für Änderungen an style/display
+        // Überwache das DOM auf Änderungen, die auf Botschutz oder fehlende Buttons hindeuten könnten
+        const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] }; // Optimierte Attribute
 
         const observer = new MutationObserver((mutationsList, observer) => {
-            // Nur prüfen, wenn das Skript eigentlich aktiv sein sollte oder war
-            if (autoActionActive || botProtectionDetected) {
-                // Optimierung: Nur prüfen, wenn relevante Änderungen aufgetreten sind
+            // Nur prüfen, wenn das Skript aktiv sein sollte oder ein Problem vorlag
+            if (autoActionActive || botProtectionDetected || noFarmButtonsDetected) {
                 const relevantChange = mutationsList.some(mutation =>
-                    mutation.type === 'childList' || // Neue Elemente hinzugefügt/entfernt
-                    (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class')) // Sichtbarkeitsänderungen
+                    mutation.type === 'childList' ||
+                    (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class'))
                 );
 
                 if (relevantChange) {
-                    checkAntiBotProtection(); // Führe die Botschutz-Prüfung aus
+                    // Prüfe beides: Botschutz und Button-Verfügbarkeit
+                    checkAntiBotProtection();
+                    if (game_data.screen === 'am_farm' && !botProtectionDetected) { // Nur prüfen, wenn auf Farm-Seite und kein Botschutz
+                        const farmButton = $(FARM_BUTTON_SELECTOR).first();
+                        if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
+                            if (autoActionActive) { // Wenn Buttons verschwunden und Skript noch aktiv
+                                clearInterval(autoActionIntervalId);
+                                autoActionIntervalId = null;
+                                autoActionActive = false;
+                                if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                                    UI.InfoMessage('Keine Farm-Buttons mehr gefunden/sichtbar. Auto-Action gestoppt!', 3000);
+                                }
+                            }
+                            if (!noFarmButtonsDetected) { // Nur einmal melden
+                                noFarmButtonsDetected = true;
+                                updateUIStatus();
+                            }
+                        } else {
+                            if (noFarmButtonsDetected) { // Buttons wieder da
+                                noFarmButtonsDetected = false;
+                                updateUIStatus();
+                                // Optional: Wenn Skript vorher wegen fehlender Buttons gestoppt wurde, jetzt starten?
+                                // Nein, das wäre unerwartetes Verhalten. Benutzer soll es manuell starten.
+                            }
+                        }
+                    }
                 }
             }
         });
 
-        // Starte den Observer auf dem 'body'-Element, um alle Änderungen zu überwachen
         observer.observe(document.body, observerConfig);
 
         // Initialprüfung beim Laden der Seite
         checkAntiBotProtection();
+        // Auch Farm-Buttons initial prüfen, falls schon beim Laden keine da sind
+        if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
+            const farmButton = $(FARM_BUTTON_SELECTOR).first();
+            if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
+                noFarmButtonsDetected = true;
+                updateUIStatus();
+            }
+        }
     });
 
 })();
