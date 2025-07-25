@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.27 // Version auf 3.27 aktualisiert - Button-Schrift weiß, Statusleiste hinzugefügt
+// @version       3.28 // Version auf 3.28 aktualisiert - Button-Farbänderung entfernt, Statusleiste mit Farbcode
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.27'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.28'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -463,13 +463,13 @@
                         font-weight: bold;
                         border: 1px solid #804000;
                         border-radius: 3px;
-                        background-color: #f0e2b6;
-                        color: #5b3617; /* Standardfarbe für Buttons im Dialog */
+                        background-color: #f0e2b6; /* Einheitliche Farbe */
+                        color: #5b3617; /* Dunkler Text für Dialog-Buttons */
                     }
                     #tw_auto_action_settings_dialog_content .btn-red {
-                        background-color: #d1b790;
+                        background-color: #d1b790; /* Einheitliche Farbe */
                         border-color: #6d3300;
-                        color: #3b1e0a; /* Standardfarbe für Buttons im Dialog */
+                        color: #3b1e0a; /* Dunkler Text für Dialog-Buttons */
                     }
                     #tw_auto_action_settings_dialog_content h3 {
                         color: #804000;
@@ -615,88 +615,70 @@
     let settingsButtonRef = null;
     let activateSoundButtonRef = null;
     let toggleButtonRef = null;
-    let mainContainerRef = null; // NEU: Referenz auf den Haupt-Container
-    let buttonsRowRef = null; // NEU: Referenz auf die Buttons-Reihe
-    let statusBarRef = null; // NEU: Referenz auf die Statusleiste
+    let mainContainerRef = null; // Referenz auf den Haupt-Container
+    let buttonsRowRef = null; // Referenz auf die Buttons-Reihe
+    let statusBarRef = null; // Referenz auf die Statusleiste
 
 
     // Funktion zum Aktualisieren des UI-Status (Button-Text, Farbe und NEU: Tab-Titel & Statusleiste)
     function updateUIStatus() {
         let currentTabTitle = originalDocumentTitle; // Startet mit dem Originaltitel
         let currentStatusText = 'TW Auto-Action ist bereit.'; // Standardtext für die Statusleiste
+        let statusBarBgColor = '#ffc107'; // Standard: Gelb für Inaktiv/Bereit/Keine Buttons
 
-        // Farben für Buttons
-        let buttonBgColor;
-        let buttonBorderColor;
+        // Farben für Buttons - nun feste Werte
+        const defaultButtonBg = '#f0e2b6';
+        const defaultButtonBorder = '#804000';
+        const defaultButtonText = '#ffffff'; // Feste weiße Schrift
 
-        if (botProtectionDetected) {
-            buttonBgColor = '#f8d7da'; // Rot-Stich
-            buttonBorderColor = '#dc3545'; // Rot-Stich
-            currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
-            currentStatusText = '[BOTSCHUTZ] Auto-Action pausiert!';
-        } else if (noFarmButtonsDetected) {
-            buttonBgColor = '#fff3cd'; // Gelb-Stich
-            buttonBorderColor = '#ffeeba'; // Gelb-Stich
-            currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
-            currentStatusText = '[KEINE BUTTONS] Auto-Action gestoppt.';
-        } else if (autoActionActive) {
-            buttonBgColor = '#d4edda'; // Grün-Stich
-            buttonBorderColor = '#28a745'; // Grün-Stich
-            currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
-            currentStatusText = '[AKTIV] Auto-Action läuft...';
-        } else {
-            buttonBgColor = '#f0e2b6'; // Standard/Inaktiv
-            buttonBorderColor = '#804000'; // Standard/Inaktiv
-            currentStatusText = 'Auto-Action ist inaktiv.';
-        }
-
-        // Update Settings Button
+        // Update Settings Button (feste Farben)
         if (settingsButtonRef) {
             settingsButtonRef.css({
-                'background-color': buttonBgColor,
-                'border-color': buttonBorderColor,
-                'color': '#ffffff' // Fest auf weiß
+                'background-color': defaultButtonBg,
+                'color': defaultButtonText,
+                'border-color': defaultButtonBorder
             });
         }
 
-        // Update Activate Sound Button (Dieser Button hat eine eigene Logik für "Ton Aktiv")
+        // Update Activate Sound Button (feste Farben, Text kann sich ändern)
         if (activateSoundButtonRef) {
-             // Der "Ton Aktivieren" Button behält seine Farbänderung nach Klick
-             // Wenn er noch nicht geklickt wurde oder nicht aktiv ist, folgt er dem allgemeinen Schema
-            if (activateSoundButtonRef.text() === 'Ton Aktiv') {
-                 // Bleibt grün, wenn er geklickt wurde
-                 activateSoundButtonRef.css({
-                    'background-color': '#d4edda',
-                    'color': '#155724', // Hier könnte man auch auf weiß ändern, je nach Wunsch
-                    'border-color': '#28a745'
-                });
-            } else {
-                activateSoundButtonRef.css({
-                    'background-color': buttonBgColor,
-                    'border-color': buttonBorderColor,
-                    'color': '#ffffff' // Fest auf weiß
-                });
-            }
+            activateSoundButtonRef.css({
+                'background-color': defaultButtonBg,
+                'color': defaultButtonText,
+                'border-color': defaultButtonBorder
+            });
+            // Der Text "Ton Aktiv" wird nur beim Klick gesetzt und bleibt dann so
         }
 
-        // Update Toggle Button
+        // Update Toggle Button (feste Farben, Text ändert sich zwischen Start/Stopp)
         if (toggleButtonRef) {
             toggleButtonRef.text(autoActionActive ? 'Auto-Action Stopp' : 'Auto-Action Start');
-            // Wenn pausiert durch Botschutz/keine Buttons, Button auch Gelb/Rot
-            if (botProtectionDetected || noFarmButtonsDetected) {
-                toggleButtonRef.css({
-                    'background-color': buttonBgColor, // Verwendet die oben berechneten Farben
-                    'border-color': buttonBorderColor,
-                    'color': '#ffffff' // Fest auf weiß
-                });
-            } else { // Normale Start/Stopp Logik
-                toggleButtonRef.css({
-                    'background-color': autoActionActive ? '#d1b790' : '#d4edda', // Rot-braun wenn aktiv, Grünlich wenn inaktiv
-                    'border-color': autoActionActive ? '#6d3300' : '#28a745',
-                    'color': '#ffffff' // Fest auf weiß
-                });
-            }
+            toggleButtonRef.css({
+                'background-color': defaultButtonBg,
+                'color': defaultButtonText,
+                'border-color': defaultButtonBorder
+            });
         }
+
+        // --- Logik für die Statusleiste (Farbe und Text) ---
+        if (botProtectionDetected) {
+            statusBarBgColor = '#dc3545'; // Rot
+            currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
+            currentStatusText = '[BOTSCHUTZ] Auto-Action pausiert!';
+        } else if (autoActionActive) {
+            statusBarBgColor = '#28a745'; // Grün
+            currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
+            currentStatusText = '[AKTIV] Auto-Action läuft...';
+        } else if (noFarmButtonsDetected) {
+            statusBarBgColor = '#ffc107'; // Gelb
+            currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
+            currentStatusText = '[KEINE BUTTONS] Auto-Action gestoppt.';
+        } else { // Inaktiv oder Bereit (Initialzustand)
+            statusBarBgColor = '#ffc107'; // Gelb
+            currentStatusText = 'Auto-Action ist inaktiv.';
+            // Der Tab-Titel bleibt hier original, da keine besondere Statusinfo benötigt wird
+        }
+
 
         // Update Tab Title
         document.title = currentTabTitle;
@@ -704,6 +686,10 @@
         // Update Status Bar
         if (statusBarRef) {
             statusBarRef.text(currentStatusText);
+            statusBarRef.css({
+                'background-color': statusBarBgColor,
+                'color': '#ffffff' // Feste weiße Schrift für die Statusleiste
+            });
         }
     }
 
@@ -712,20 +698,22 @@
             return;
         }
 
+        // Buttons sind nun fester Teil des HTML, ihre Grundstile sind hier gesetzt.
+        // Die Textfarbe wird hier schon auf weiß gesetzt.
         const settingsButtonHtml = `
-            <a href="#" id="tw_auto_action_settings_button" class="btn" style="white-space: nowrap; display: inline-block; color: white;">
+            <a href="#" id="tw_auto_action_settings_button" class="btn" style="white-space: nowrap; display: inline-block; color: #ffffff;">
                 Auto-Action Einstellungen
             </a>
         `;
 
         const activateSoundButtonHtml = `
-            <a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="white-space: nowrap; display: inline-block; color: white;">
+            <a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="white-space: nowrap; display: inline-block; color: #ffffff;">
                 Ton Aktivieren
             </a>
         `;
 
         const toggleButtonHtml = `
-            <a href="#" id="tw_auto_action_toggle_button" class="btn" style="white-space: nowrap; display: inline-block; color: white;">
+            <a href="#" id="tw_auto_action_toggle_button" class="btn" style="white-space: nowrap; display: inline-block; color: #ffffff;">
                 Auto-Action Start/Stopp
             </a>
         `;
@@ -750,9 +738,6 @@
             const contentValue = $('#content_value');
             if (contentValue.length > 0) {
                 contentValue.prepend(mainContainerHtml);
-                // Wenn prepend, muss man die fixed Position wieder hinzufügen,
-                // falls der Parent nicht fixed ist und das Skript nicht in einem Frame läuft.
-                // Aber hier ist es ja schon im HTML definiert.
             } else {
                 $('body').append(mainContainerHtml);
             }
@@ -789,16 +774,12 @@
                 e.preventDefault();
                 playActivationTestTone(); // Ruft die spezielle Testton-Funktion auf (spielt ausgewählten Ton)
 
-                // Optional: Den Text des "Ton Aktivieren" Buttons dauerhaft ändern, wenn erfolgreich geklickt
+                // Setzt den Text des Buttons dauerhaft auf "Ton Aktiv"
                 activateSoundButtonRef.text('Ton Aktiv');
-                activateSoundButtonRef.css({ // Hier bleibt die Farbe fix nach Aktivierung
-                    'background-color': '#d4edda',
-                    'color': '#155724', // Textfarbe nach Aktivierung
-                    'border-color': '#28a745'
-                });
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Ton aktiviert! Er bleibt aktiv, bis die Seite komplett neu geladen wird.', 3000);
                 }
+                updateUIStatus(); // Aktualisiert, damit die Statusleiste evtl. ihre Farbe aktualisiert
             });
         } else {
             if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
@@ -855,7 +836,7 @@
 
         const observer = new MutationObserver((mutationsList, observer) => {
             // Nur aktualisieren, wenn potenziell relevante Änderungen passieren und das Skript aktiv oder in einem speziellen Zustand ist
-            if (autoActionActive || botProtectionDetected || noFarmButtonsDetected) {
+            if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || !initialReadyMessageShown) { // Auch aktualisieren, wenn die Initialnachricht noch nicht gezeigt wurde (also der Startzustand)
                 const relevantChange = mutationsList.some(mutation =>
                     mutation.type === 'childList' ||
                     (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class'))
@@ -908,7 +889,6 @@
             const farmButton = $(FARM_BUTTON_SELECTOR).first();
             if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
                 noFarmButtonsDetected = true;
-                // updateUIStatus() wird hier bereits von checkAntiBotProtection() oder direkt nach addAmFarmSettingsButton() aufgerufen
             }
         }
         updateUIStatus(); // Stellt sicher, dass der Titel initial korrekt gesetzt wird und die Buttons den korrekten Zustand haben
