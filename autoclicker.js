@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.18 // Version auf 3.18 aktualisiert - Zweiter Test-Ton Button für Automation
+// @version       3.20 // Version auf 3.20 aktualisiert - Einstellung zum Deaktivieren des Botschutz-Tons
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.18'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.20'; // Die aktuelle Version des Skripts
 
     // --- Standardeinstellungen ---
     const defaultSettings = {
@@ -28,7 +28,8 @@
         requiredCtrl: true,
         requiredAlt: false,
         requiredShift: true,
-        pauseOnBotProtection: true // Einstellung: Bei Botschutz pausieren
+        pauseOnBotProtection: true, // Einstellung: Bei Botschutz pausieren
+        soundEnabled: true // NEU: Standard: Botschutz-Ton aktiviert
     };
     let currentSettings = {}; // Wird aus localStorage geladen
 
@@ -39,10 +40,11 @@
             try {
                 const parsed = JSON.parse(savedSettings);
                 currentSettings = { ...defaultSettings, ...parsed };
+                // Sicherstellen, dass toggleKeyChar aus keyCode abgeleitet wird, falls es fehlt
                 if (!currentSettings.toggleKeyChar && currentSettings.toggleKeyCode) {
                     currentSettings.toggleKeyChar = currentSettings.toggleKeyCode.replace('Key', '').replace('Digit', '');
                     if (currentSettings.toggleKeyCode === 'Space') currentSettings.toggleKeyChar = ' ';
-                } else if (!currentSettings.toggleKeyChar && currentSettings.toggleKeyChar) {
+                } else if (currentSettings.toggleKeyChar && !currentSettings.toggleKeyCode) { // Fallback, falls Char da, aber Code fehlt
                     currentSettings.toggleKeyCode = getKeyCodeFromChar(currentSettings.toggleKeyChar);
                 }
             } catch (e) {
@@ -66,7 +68,10 @@
             return 'Key' + char;
         }
         if (char === ' ') return 'Space';
-        return null; // For numbers and other characters, default to null for now
+        if (char.length === 1 && char.match(/[0-9]/)) {
+            return 'Digit' + char;
+        }
+        return null;
     }
 
 
@@ -81,12 +86,10 @@
         return Math.floor(Math.random() * (max - min + 1)) + min;
     }
 
-    // --- Ton abspielen ---
-    let audioCtx = null; // Globale Referenz für AudioContext
-
+    // --- Ton erzeugen und abspielen (der eigentliche Sound-Generator) ---
     function createAndPlayOscillator() {
         if (!audioCtx || audioCtx.state === 'closed') {
-            console.warn('TW Auto-Action: AudioContext nicht bereit für die Wiedergabe.');
+            console.warn('TW Auto-Action: AudioContext nicht bereit für die Wiedergabe des Oszillators.');
             return;
         }
 
@@ -106,30 +109,69 @@
         console.log('TW Auto-Action: Oszillator-Ton gestartet.');
     }
 
-    function playAntiBotSound() {
-        console.log('TW Auto-Action: Versuche Botschutz-Ton abzuspielen...');
+    // --- Funktion zum Triggern des Botschutz-Tons (respektiert Einstellung) ---
+    function triggerAntiBotSound() {
+        console.log('TW Auto-Action: Trigger Botschutz-Ton (geprüft nach Einstellung)...');
+        if (!currentSettings.soundEnabled) {
+            console.log('TW Auto-Action: Botschutz-Ton ist in den Einstellungen deaktiviert. Überspringe Wiedergabe.');
+            return; // Hier wird die Wiedergabe komplett unterbunden
+        }
+
         try {
-            if (!audioCtx) {
+            if (!audioCtx || audioCtx.state === 'closed') {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                console.log('TW Auto-Action: AudioContext initialisiert. Zustand:', audioCtx.state);
+                console.log('TW Auto-Action: AudioContext initialisiert (durch Botschutz-Trigger). Zustand:', audioCtx.state);
+            }
+
+            const actuallyPlaySound = () => {
+                 console.log('TW Auto-Action: Botschutz-Ton wird abgespielt.');
+                 createAndPlayOscillator();
+            };
+
+            if (audioCtx.state === 'suspended') {
+                console.log('TW Auto-Action: AudioContext ist ausgesetzt (durch Botschutz-Trigger), versuche Fortsetzung...');
+                audioCtx.resume().then(() => {
+                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt (durch Botschutz-Trigger).');
+                    actuallyPlaySound();
+                }).catch(e => {
+                    console.warn("TW Auto-Action: Fehler beim Fortsetzen des AudioContext (durch Botschutz-Trigger).", e);
+                });
+            } else if (audioCtx.state === 'running') {
+                console.log('TW Auto-Action: AudioContext läuft bereits (durch Botschutz-Trigger).');
+                actuallyPlaySound();
+            } else {
+                console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand (durch Botschutz-Trigger):', audioCtx.state);
+            }
+        } catch (e) {
+            console.warn("TW Auto-Action: Fehler beim Initialisieren oder Abspielen des Anti-Bot-Sounds (durch Botschutz-Trigger).", e);
+        }
+    }
+
+    // --- Funktion für den Aktivierungs-Test-Ton (spielt immer, entsperrt Context) ---
+    function playActivationTestTone() {
+        console.log('TW Auto-Action: Test-Ton durch Aktivierungs-Button angefordert...');
+        try {
+            if (!audioCtx || audioCtx.state === 'closed') {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('TW Auto-Action: AudioContext initialisiert (durch Aktivierungs-Button). Zustand:', audioCtx.state);
             }
 
             if (audioCtx.state === 'suspended') {
-                console.log('TW Auto-Action: AudioContext ist ausgesetzt, versuche Fortsetzung...');
+                console.log('TW Auto-Action: AudioContext ist ausgesetzt (durch Aktivierungs-Button), versuche Fortsetzung...');
                 audioCtx.resume().then(() => {
-                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt und Ton wird abgespielt.');
+                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt (durch Aktivierungs-Button), spiele Test-Ton ab.');
                     createAndPlayOscillator();
                 }).catch(e => {
-                    console.warn("TW Auto-Action: Fehler beim Fortsetzen des AudioContext.", e);
+                    console.warn("TW Auto-Action: Fehler beim Fortsetzen des AudioContext (durch Aktivierungs-Button).", e);
                 });
             } else if (audioCtx.state === 'running') {
-                console.log('TW Auto-Action: AudioContext läuft bereits, Ton wird abgespielt.');
+                console.log('TW Auto-Action: AudioContext läuft bereits (durch Aktivierungs-Button), spiele Test-Ton ab.');
                 createAndPlayOscillator();
             } else {
-                console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand:', audioCtx.state);
+                console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand (durch Aktivierungs-Button):', audioCtx.state);
             }
         } catch (e) {
-            console.warn("TW Auto-Action: Fehler beim Initialisieren oder Abspielen des Anti-Bot-Sounds.", e);
+            console.warn("TW Auto-Action: Fehler beim Initialisieren oder Abspielen des Test-Tons (durch Aktivierungs-Button).", e);
         }
     }
 
@@ -166,8 +208,8 @@
         if (isBotProtectionVisible) {
             if (!botProtectionDetected) {
                 botProtectionDetected = true;
-                playAntiBotSound();
-
+                triggerAntiBotSound(); // RUFT JETZT triggerAntiBotSound() AUF
+                // ... (Rest bleibt gleich)
                 if (autoActionActive && currentSettings.pauseOnBotProtection) {
                     clearInterval(autoActionIntervalId);
                     autoActionIntervalId = null;
@@ -403,9 +445,11 @@
                         <th>Botschutz pausieren</th>
                         <td><input type="checkbox" id="setting_pause_on_bot_protection" ${currentSettings.pauseOnBotProtection ? 'checked' : ''}> Bei Botschutz-Abfrage pausieren</td>
                     </tr>
+                    <tr>
+                        <th>Botschutz-Ton</th>
+                        <td><input type="checkbox" id="setting_sound_enabled" ${currentSettings.soundEnabled ? 'checked' : ''}> Ton abspielen</td>
+                    </tr>
                 </table>
-                <button id="tw_auto_action_test_sound_immediate" class="btn">Test-Ton abspielen (sofort)</button>
-                <button id="tw_auto_action_test_sound_automation" class="btn">Test-Ton Automation (nach 5s Verzögerung)</button>
                 <button id="tw_auto_action_save_settings" class="btn">Speichern</button>
                 <button id="tw_auto_action_close_settings" class="btn btn-red">Schließen</button>
             </div>
@@ -418,22 +462,6 @@
         `);
 
         $('body').append(customDialogElement);
-
-        // Event Listener für den sofortigen Test-Button
-        $('#tw_auto_action_test_sound_immediate').on('click', () => {
-            playAntiBotSound(); // Ton sofort abspielen
-        });
-
-        // Event Listener für den neuen Automation Test-Button
-        $('#tw_auto_action_test_sound_automation').on('click', () => {
-            if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
-                UI.InfoMessage('Test-Ton für Automation wird in 5 Sekunden abgespielt. Bitte zuerst "Test-Ton abspielen (sofort)" klicken, um Audio zu entsperren!', 6000);
-            }
-            console.log('TW Auto-Action: Test-Ton Automation in 5 Sekunden geplant.');
-            setTimeout(() => {
-                playAntiBotSound();
-            }, 5000); // 5 Sekunden Verzögerung
-        });
 
 
         $('#tw_auto_action_save_settings').on('click', () => {
@@ -461,6 +489,7 @@
             currentSettings.minInterval = newMinInterval;
             currentSettings.maxInterval = newMaxInterval;
             currentSettings.pauseOnBotProtection = $('#setting_pause_on_bot_protection').is(':checked');
+            currentSettings.soundEnabled = $('#setting_sound_enabled').is(':checked'); // NEU: Einstellung speichern
 
             saveSettings();
             customDialogElement.remove();
@@ -488,6 +517,7 @@
 
     // --- Einstellungs-Button auf der Farm-Seite hinzufügen ---
     let settingsButtonRef = null;
+    let activateSoundButtonRef = null; // Ref für den neuen Sound-Aktivierungs-Button
 
     function updateUIStatus() {
         if (settingsButtonRef) {
@@ -527,16 +557,28 @@
                 Auto-Action Einstellungen
             </a>
         `;
+
+        const activateSoundButtonHtml = `
+            <a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="white-space: nowrap; margin-bottom: 10px; display: inline-block; margin-right: 5px;">
+                Ton Aktivieren
+            </a>
+        `;
+
         const accountManagerHeading = $('#content_value h2:contains("Account Manager"), #content_value h3:contains("Account Manager")');
 
         if (accountManagerHeading.length > 0) {
-            $(settingsButtonHtml).insertBefore(accountManagerHeading.first());
+            $(settingsButtonHtml).insertBefore(accountManagerHeading.first()); // Settings Button einfügen
+            $(activateSoundButtonHtml).insertBefore($('#tw_auto_action_settings_button')); // Aktivieren Button davor
         } else {
             const contentValue = $('#content_value');
             if (contentValue.length > 0) {
-                contentValue.prepend(settingsButtonHtml);
+                contentValue.prepend(settingsButtonHtml); // Settings Button zuerst (rechter)
+                contentValue.prepend(activateSoundButtonHtml); // Aktivieren Button danach (linker)
             } else {
                 $('body').append(settingsButtonHtml);
+                $('body').append(activateSoundButtonHtml);
+
+                // Feste Positionierung für beide Buttons
                 $('#tw_auto_action_settings_button').css({
                     'position': 'fixed',
                     'bottom': '10px',
@@ -544,10 +586,20 @@
                     'z-index': '10000',
                     'margin-bottom': '0'
                 });
+                // Position des neuen Buttons links vom Settings-Button (anpassen falls nötig)
+                $('#tw_auto_action_activate_sound_button').css({
+                    'position': 'fixed',
+                    'bottom': '10px',
+                    'right': '180px', // Geschätzte Breite des Settings-Buttons + Abstand
+                    'z-index': '10000',
+                    'margin-bottom': '0'
+                });
             }
         }
 
         settingsButtonRef = $('#tw_auto_action_settings_button');
+        activateSoundButtonRef = $('#tw_auto_action_activate_sound_button'); // Referenz auf neuen Button holen
+
         if (settingsButtonRef.length > 0) {
             settingsButtonRef.on('click', (e) => {
                 e.preventDefault();
@@ -558,7 +610,30 @@
                 UI.ErrorMessage("Auto-Action: Einstellungs-Button konnte nicht eingefügt werden. Skript-Fehler.", 3000);
             }
         }
-        updateUIStatus();
+
+        // Klick-Handler für den neuen Aktivierungs-Button
+        if (activateSoundButtonRef.length > 0) {
+            activateSoundButtonRef.on('click', (e) => {
+                e.preventDefault();
+                playActivationTestTone(); // Ruft die spezielle Testton-Funktion auf
+
+                // Visuellen Zustand des Buttons sofort aktualisieren
+                activateSoundButtonRef.text('Ton Aktiv');
+                activateSoundButtonRef.css({
+                    'background-color': '#d4edda', // Grünlich für aktiv
+                    'color': '#155724',          // Dunkelgrüner Text
+                    'border-color': '#28a745'    // Dunkelgrüner Rahmen
+                });
+                if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                    UI.InfoMessage('Ton aktiviert! Er bleibt aktiv, bis die Seite komplett neu geladen wird.', 3000);
+                }
+            });
+        } else {
+            if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
+                UI.ErrorMessage("Auto-Action: Ton Aktivierungs-Button konnte nicht eingefügt werden.", 3000);
+            }
+        }
+        updateUIStatus(); // Initialen Status setzen
     }
 
     // --- Skript-Initialisierung ---
