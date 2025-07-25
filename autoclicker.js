@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.11 // Version auf 3.11 aktualisiert für präziseste Botschutz-Erkennung (das Männchen-Icon selbst)
+// @version       3.12 // Version auf 3.12 aktualisiert - Versionsnummer im Popup
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -16,6 +16,8 @@
         return;
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
+
+    const SCRIPT_VERSION = '3.12'; // Die aktuelle Version des Skripts
 
     // --- Standardeinstellungen ---
     const defaultSettings = {
@@ -107,7 +109,7 @@
     // --- Botschutz-Erkennung ---
     function checkAntiBotProtection() {
         const botProtectionSelectors = [
-            'div#botprotection_quest', // NEU und sehr präzise: Das Männchen-Icon selbst
+            'div#botprotection_quest', // Das Männchen-Icon selbst
             'div[data-id="bot_protection"]', // Das Haupt-Popup (z.B. hCaptcha)
             '#popup_box_bot_protection',     // Das Haupt-Popup (ID)
             'div#tooltip:contains("Bot-Schutz")', // Das Tooltip, das beim Hover über das Männchen erscheinen kann
@@ -295,7 +297,7 @@
 
         const dialogContentHtml = `
             <div id="tw_auto_action_settings_dialog_content" style="padding: 15px; background-color: #f7f3e6; border: 1px solid #804000; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.5); max-width: 400px; margin: 20px; position: relative;">
-                <h3>Auto-Action Einstellungen</h3>
+                <h3>Auto-Action Einstellungen (v${SCRIPT_VERSION})</h3>
                 <style>
                     #tw_auto_action_settings_dialog_content table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                     #tw_auto_action_settings_dialog_content th, #tw_auto_action_settings_dialog_content td { padding: 5px; border: 1px solid #ddd; text-align: left; }
@@ -514,7 +516,7 @@
                 if (currentSettings.requiredShift) hotkeyDisplay = 'Shift + ' + hotkeyDisplay;
                 hotkeyDisplay = hotkeyDisplay.replace(/\s\+\s$/, '');
 
-                UI.InfoMessage('TW Auto-Action (v3.11) ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
+                UI.InfoMessage('TW Auto-Action (v' + SCRIPT_VERSION + ') ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
             }
         }, 1000);
 
