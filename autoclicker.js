@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.28 // Version auf 3.28 aktualisiert - Button-Farbänderung entfernt, Statusleiste mit Farbcode
+// @version       3.29 // Version auf 3.29 aktualisiert - Positionierung wie v3.20 wiederhergestellt
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.28'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.29'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -615,8 +615,6 @@
     let settingsButtonRef = null;
     let activateSoundButtonRef = null;
     let toggleButtonRef = null;
-    let mainContainerRef = null; // Referenz auf den Haupt-Container
-    let buttonsRowRef = null; // Referenz auf die Buttons-Reihe
     let statusBarRef = null; // Referenz auf die Statusleiste
 
 
@@ -698,64 +696,60 @@
             return;
         }
 
-        // Buttons sind nun fester Teil des HTML, ihre Grundstile sind hier gesetzt.
-        // Die Textfarbe wird hier schon auf weiß gesetzt.
+        // Grundlegende Styles für alle Buttons (festgelegt)
+        const buttonBaseStyle = `
+            position: fixed;
+            bottom: 10px;
+            z-index: 100000;
+            white-space: nowrap;
+            display: inline-block;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            border-radius: 3px;
+            color: #ffffff; /* Feste weiße Schrift */
+            background-color: #f0e2b6; /* Feste neutrale Hintergrundfarbe */
+            border: 1px solid #804000; /* Feste neutrale Rahmenfarbe */
+        `;
+
+        // HTML für die Buttons mit ihren spezifischen right-Positionen
         const settingsButtonHtml = `
-            <a href="#" id="tw_auto_action_settings_button" class="btn" style="white-space: nowrap; display: inline-block; color: #ffffff;">
+            <a href="#" id="tw_auto_action_settings_button" class="btn" style="${buttonBaseStyle} right: 10px;">
                 Auto-Action Einstellungen
             </a>
         `;
 
         const activateSoundButtonHtml = `
-            <a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="white-space: nowrap; display: inline-block; color: #ffffff;">
+            <a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle} right: 180px;">
                 Ton Aktivieren
             </a>
         `;
 
         const toggleButtonHtml = `
-            <a href="#" id="tw_auto_action_toggle_button" class="btn" style="white-space: nowrap; display: inline-block; color: #ffffff;">
+            <a href="#" id="tw_auto_action_toggle_button" class="btn" style="${buttonBaseStyle} right: 350px;">
                 Auto-Action Start/Stopp
             </a>
         `;
 
-        // Haupt-Container für Buttons und Statusleiste
-        const mainContainerHtml = `
-            <div id="tw_auto_action_main_container" style="position: fixed; bottom: 10px; right: 10px; z-index: 100000; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; min-width: 100px;">
-                <div id="tw_auto_action_buttons_row" style="display: flex; flex-direction: row-reverse; gap: 10px; align-items: center;">
-                    </div>
-                <div id="tw_auto_action_status_bar" style="background-color: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                    TW Auto-Action ist bereit.
-                </div>
+        // HTML für die Statusleiste (Positionierung wird dynamisch angepasst)
+        const statusBarHtml = `
+            <div id="tw_auto_action_status_bar" style="position: fixed; bottom: 5px; z-index: 99999; color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background-color: rgba(0,0,0,0.7);">
+                TW Auto-Action ist bereit.
             </div>
         `;
 
-        // Versuche, den Container sinnvoll einzufügen
-        const accountManagerHeading = $('#content_value h2:contains("Account Manager"), #content_value h3:contains("Account Manager")');
+        // Buttons und Statusleiste direkt zum Body hinzufügen
+        $('body').append(settingsButtonHtml);
+        $('body').append(activateSoundButtonHtml);
+        $('body').append(toggleButtonHtml);
+        $('body').append(statusBarHtml);
 
-        if (accountManagerHeading.length > 0) {
-            $(mainContainerHtml).insertBefore(accountManagerHeading.first());
-        } else {
-            const contentValue = $('#content_value');
-            if (contentValue.length > 0) {
-                contentValue.prepend(mainContainerHtml);
-            } else {
-                $('body').append(mainContainerHtml);
-            }
-        }
 
-        mainContainerRef = $('#tw_auto_action_main_container');
-        buttonsRowRef = $('#tw_auto_action_buttons_row');
-        statusBarRef = $('#tw_auto_action_status_bar');
-
-        // Buttons in die Buttons-Reihe einfügen
-        buttonsRowRef.append(settingsButtonHtml);
-        buttonsRowRef.append(activateSoundButtonHtml);
-        buttonsRowRef.append(toggleButtonHtml);
-
-        // Referenzen zu den eingefügten Buttons holen
+        // Referenzen zu den eingefügten Elementen holen
         settingsButtonRef = $('#tw_auto_action_settings_button');
         activateSoundButtonRef = $('#tw_auto_action_activate_sound_button');
         toggleButtonRef = $('#tw_auto_action_toggle_button');
+        statusBarRef = $('#tw_auto_action_status_bar');
 
         // Event-Listener zuweisen
         if (settingsButtonRef.length > 0) {
@@ -798,15 +792,24 @@
             }
         }
 
-        // NEU: Breite der Statusleiste dynamisch anpassen, nachdem Buttons gerendert wurden
-        // Hier ein kleiner Timeout, um sicherzustellen, dass das Layout stabil ist
+        // NEU: Breite und linke Position der Statusleiste dynamisch anpassen
+        // Dies muss NACHDEM die Buttons im DOM sind und gerendert wurden, damit outerWidth() korrekt ist.
         setTimeout(() => {
-             if (buttonsRowRef && statusBarRef) {
-                // Setze die Breite der Statusleiste auf die Breite der Buttons-Reihe
-                statusBarRef.width(buttonsRowRef.outerWidth());
+             if (settingsButtonRef.length && activateSoundButtonRef.length && toggleButtonRef.length && statusBarRef.length) {
+                // Die Statusleiste rechts mit dem Settings-Button ausrichten
+                statusBarRef.css('right', '10px'); // Gleiche rechte Position wie Settings Button
+
+                // Die linke Position der Statusleiste am linken Rand des Toggle-Buttons ausrichten
+                const toggleButtonLeft = toggleButtonRef.offset().left;
+                statusBarRef.css('left', toggleButtonLeft + 'px');
+
+                // Die Breite der Statusleiste auf die Spanne der Buttons setzen
+                const settingsButtonRightEdge = settingsButtonRef.offset().left + settingsButtonRef.outerWidth();
+                const calculatedWidth = settingsButtonRightEdge - toggleButtonLeft;
+                statusBarRef.width(calculatedWidth);
             }
-            updateUIStatus(); // Initiales Update des Status für alle Buttons und den Tab-Titel
-        }, 50); // Kleiner Timeout
+            updateUIStatus(); // Initiales Update des Status für alle Elemente
+        }, 50); // Kleiner Timeout, um Rendering sicherzustellen
     }
 
     // --- Skript-Initialisierung ---
