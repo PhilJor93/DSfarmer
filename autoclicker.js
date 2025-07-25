@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.17 // Version auf 3.17 aktualisiert - Test-Ton spielt sofort
+// @version       3.18 // Version auf 3.18 aktualisiert - Zweiter Test-Ton Button für Automation
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.17'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.18'; // Die aktuelle Version des Skripts
 
     // --- Standardeinstellungen ---
     const defaultSettings = {
@@ -65,12 +65,10 @@
         if (char.length === 1 && char.match(/[A-Z]/)) {
             return 'Key' + char;
         }
-        if (char.length === 1 && char.match(/[0-9]/)) {
-            return 'Digit' + char;
-        }
         if (char === ' ') return 'Space';
-        return null;
+        return null; // For numbers and other characters, default to null for now
     }
+
 
     // --- Skript-Variablen ---
     let autoActionActive = false;
@@ -406,7 +404,8 @@
                         <td><input type="checkbox" id="setting_pause_on_bot_protection" ${currentSettings.pauseOnBotProtection ? 'checked' : ''}> Bei Botschutz-Abfrage pausieren</td>
                     </tr>
                 </table>
-                <button id="tw_auto_action_test_sound" class="btn">Test-Ton abspielen (sofort)</button>
+                <button id="tw_auto_action_test_sound_immediate" class="btn">Test-Ton abspielen (sofort)</button>
+                <button id="tw_auto_action_test_sound_automation" class="btn">Test-Ton Automation (nach 5s Verzögerung)</button>
                 <button id="tw_auto_action_save_settings" class="btn">Speichern</button>
                 <button id="tw_auto_action_close_settings" class="btn btn-red">Schließen</button>
             </div>
@@ -420,9 +419,20 @@
 
         $('body').append(customDialogElement);
 
-        // Event Listener für den neuen Test-Button
-        $('#tw_auto_action_test_sound').on('click', () => {
+        // Event Listener für den sofortigen Test-Button
+        $('#tw_auto_action_test_sound_immediate').on('click', () => {
             playAntiBotSound(); // Ton sofort abspielen
+        });
+
+        // Event Listener für den neuen Automation Test-Button
+        $('#tw_auto_action_test_sound_automation').on('click', () => {
+            if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                UI.InfoMessage('Test-Ton für Automation wird in 5 Sekunden abgespielt. Bitte zuerst "Test-Ton abspielen (sofort)" klicken, um Audio zu entsperren!', 6000);
+            }
+            console.log('TW Auto-Action: Test-Ton Automation in 5 Sekunden geplant.');
+            setTimeout(() => {
+                playAntiBotSound();
+            }, 5000); // 5 Sekunden Verzögerung
         });
 
 
