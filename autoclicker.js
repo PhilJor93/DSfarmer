@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.24 // Version auf 3.24 aktualisiert - Weitere Sounds hinzugefügt
+// @version       3.25 // Version auf 3.25 aktualisiert - Tab-Titeländerung hinzugefügt
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,10 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.24'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.25'; // Die aktuelle Version des Skripts
+
+    // Speichert den ursprünglichen Titel des Dokuments
+    const originalDocumentTitle = document.title;
 
     // --- Sound-Profile Definitionen ---
     // Hier können weitere Sounds hinzugefügt oder bestehende angepasst werden
@@ -26,7 +29,6 @@
         'alarm': { name: 'Alarm (Kurz & Hoch)', frequency: 880, type: 'triangle', duration: 0.4, volume: 0.6 },
         'chime': { name: 'Glocke (Tief & Langsam)', frequency: 440, type: 'sine', duration: 1.2, volume: 0.4 },
         'beep': { name: 'Beep (Standard-Signal)', frequency: 750, type: 'square', duration: 0.2, volume: 0.7 },
-        // NEUE SOUNDS:
         'high_alert': { name: 'Hoher Alarm', frequency: 1000, type: 'sawtooth', duration: 0.3, volume: 0.7 },
         'soft_chime': { name: 'Sanfte Glocke', frequency: 523.25, type: 'sine', duration: 0.6, volume: 0.4 }, // C5
         'deep_thump': { name: 'Tiefer Puls', frequency: 120, type: 'square', duration: 0.5, volume: 0.8 },
@@ -44,7 +46,7 @@
         requiredShift: true,
         pauseOnBotProtection: true, // Einstellung: Bei Botschutz pausieren
         soundEnabled: true, // Botschutz-Ton aktiviert
-        selectedSound: 'default' // NEU: Standard: 'default' Sound
+        selectedSound: 'default' // Standard: 'default' Sound
     };
     let currentSettings = {}; // Wird aus localStorage geladen
 
@@ -280,7 +282,7 @@
                 } else if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
                     UI.ErrorMessage('Botschutz-Abfrage erkannt! Auto-Action ist nicht aktiv oder pausiert nicht automatisch.', 5000);
                 }
-                updateUIStatus();
+                updateUIStatus(); // Aktualisiert auch den Tab-Titel
             }
             return true;
         } else {
@@ -289,7 +291,7 @@
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Botschutz-Abfrage nicht mehr sichtbar. Auto-Action kann bei Bedarf wieder gestartet werden.', 3000);
                 }
-                updateUIStatus();
+                updateUIStatus(); // Aktualisiert auch den Tab-Titel
             }
             return false;
         }
@@ -308,7 +310,7 @@
             if (farmButton.length > 0 && farmButton.is(':visible') && !farmButton.is(':disabled')) {
                 if (noFarmButtonsDetected) {
                     noFarmButtonsDetected = false;
-                    updateUIStatus();
+                    updateUIStatus(); // Aktualisiert auch den Tab-Titel
                 }
                 farmButton.trigger('click');
             } else {
@@ -327,7 +329,7 @@
                             UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
                         }
                     }
-                    updateUIStatus();
+                    updateUIStatus(); // Aktualisiert auch den Tab-Titel
                 }
             }
         } else {
@@ -340,7 +342,7 @@
                 }
                 noFarmButtonsDetected = false;
                 botProtectionDetected = false;
-                updateUIStatus();
+                updateUIStatus(); // Aktualisiert auch den Tab-Titel
             }
         }
     }
@@ -373,7 +375,6 @@
             botProtectionDetected = false;
         } else {
             // Beim Starten des Skripts durch Nutzerinteraktion: Versuche AudioContext zu aktivieren
-            // Hier wird nur der Context aktiviert, nicht der Botschutz-Ton getriggert
             if (!audioCtx) {
                 audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             }
@@ -386,6 +387,7 @@
             }
 
             if (checkAntiBotProtection()) {
+                // Wenn Botschutz direkt beim Start erkannt wird, wird der Status bereits in checkAntiBotProtection() aktualisiert
                 return;
             }
 
@@ -395,7 +397,7 @@
                     UI.ErrorMessage('Kann Auto-Action nicht starten: Keine Farm-Buttons gefunden oder sie sind nicht sichtbar/aktiv.', 4000);
                 }
                 noFarmButtonsDetected = true;
-                updateUIStatus();
+                updateUIStatus(); // Aktualisiert auch den Tab-Titel
                 return;
             }
 
@@ -422,7 +424,7 @@
             }
             noFarmButtonsDetected = false;
         }
-        updateUIStatus();
+        updateUIStatus(); // Aktualisiert auch den Tab-Titel
     };
 
     // --- PRÄZISER SELEKTOR FÜR BELIEBIGEN FARMGOD BUTTON ---
@@ -584,6 +586,7 @@
                 UI.InfoMessage('Einstellungen gespeichert!', 2000);
             }
 
+            // Beim Speichern der Einstellungen könnte der Zustand des Skripts geändert werden, daher aktualisieren
             if (autoActionActive) {
                 clearInterval(autoActionIntervalId);
                 autoActionIntervalId = null;
@@ -592,7 +595,7 @@
                     UI.InfoMessage('Skript pausiert. Starte per Hotkey oder extern zum Neustart mit neuen Einstellungen.', 3000);
                 }
             }
-            updateUIStatus();
+            updateUIStatus(); // Aktualisiert auch den Tab-Titel
         });
 
         $('#tw_auto_action_close_settings').on('click', () => {
@@ -611,7 +614,10 @@
     let settingsButtonRef = null;
     let activateSoundButtonRef = null;
 
+    // Funktion zum Aktualisieren des UI-Status (Button-Text, Farbe und NEU: Tab-Titel)
     function updateUIStatus() {
+        let currentTabTitle = originalDocumentTitle; // Startet mit dem Originaltitel
+
         if (settingsButtonRef) {
             let statusText = autoActionActive ? ' (Aktiv)' : ' (Inaktiv)';
             let backgroundColor = autoActionActive ? '#d4edda' : '#f0e2b6';
@@ -623,11 +629,15 @@
                 backgroundColor = '#f8d7da';
                 textColor = '#721c24';
                 borderColor = '#dc3545';
+                currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
             } else if (noFarmButtonsDetected) {
                 statusText = ' (Keine Farm-Buttons gefunden - Inaktiv)';
                 backgroundColor = '#fff3cd';
                 textColor = '#856404';
                 borderColor = '#ffeeba';
+                currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
+            } else if (autoActionActive) {
+                 currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
             }
 
             settingsButtonRef.text('Auto-Action Einstellungen' + statusText);
@@ -637,6 +647,7 @@
                 'border-color': borderColor
             });
         }
+        document.title = currentTabTitle; // Setzt den Titel des Browser-Tabs
     }
 
     function addAmFarmSettingsButton() {
@@ -745,6 +756,7 @@
         const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] };
 
         const observer = new MutationObserver((mutationsList, observer) => {
+            // Nur aktualisieren, wenn potenziell relevante Änderungen passieren und das Skript aktiv oder in einem speziellen Zustand ist
             if (autoActionActive || botProtectionDetected || noFarmButtonsDetected) {
                 const relevantChange = mutationsList.some(mutation =>
                     mutation.type === 'childList' ||
@@ -752,8 +764,11 @@
                 );
 
                 if (relevantChange) {
-                    checkAntiBotProtection();
-                    if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm' && !botProtectionDetected) {
+                    // Überprüfe Botschutz, da dies den Skriptstatus ändern kann
+                    const botProtectionFound = checkAntiBotProtection();
+
+                    if (!botProtectionFound && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
+                        // Überprüfe Farm-Buttons nur, wenn kein Botschutz aktiv ist und auf der Farm-Seite
                         const farmButton = $(FARM_BUTTON_SELECTOR).first();
                         if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
                             if (autoActionActive) {
@@ -766,13 +781,21 @@
                             }
                             if (!noFarmButtonsDetected) {
                                 noFarmButtonsDetected = true;
-                                updateUIStatus();
+                                updateUIStatus(); // Aktualisiert auch den Tab-Titel
                             }
                         } else {
                             if (noFarmButtonsDetected) {
                                 noFarmButtonsDetected = false;
-                                updateUIStatus();
+                                updateUIStatus(); // Aktualisiert auch den Tab-Titel
                             }
+                        }
+                    } else if (!botProtectionFound) {
+                        // Wenn der Botschutz nicht gefunden wurde und das Skript nicht auf der Farm-Seite ist,
+                        // und keine Buttons erkannt wurden, stellen Sie sicher, dass diese Zustände zurückgesetzt werden.
+                        if (noFarmButtonsDetected || botProtectionDetected) {
+                            noFarmButtonsDetected = false;
+                            botProtectionDetected = false;
+                            updateUIStatus(); // Aktualisiert auch den Tab-Titel
                         }
                     }
                 }
@@ -787,9 +810,10 @@
             const farmButton = $(FARM_BUTTON_SELECTOR).first();
             if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
                 noFarmButtonsDetected = true;
-                updateUIStatus();
+                // updateUIStatus() wird hier bereits von checkAntiBotProtection() oder direkt nach addAmFarmSettingsButton() aufgerufen
             }
         }
+        updateUIStatus(); // Stellt sicher, dass der Titel initial korrekt gesetzt wird
     });
 
 })();
