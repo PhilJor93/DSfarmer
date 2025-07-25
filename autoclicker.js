@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.32 // Version auf 3.32 aktualisiert - Buttons linksbündig und Statusleiste exakte Breite
+// @version       3.33 // Version auf 3.33 aktualisiert - Statusleiste beginnt und endet exakt mit Buttons
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.32'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.33'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -724,22 +724,36 @@
         const activateSoundButtonHtml = `<a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle}">Ton Aktivieren</a>`;
         const settingsButtonHtml = `<a href="#" id="tw_auto_action_settings_button" class="btn" style="${buttonBaseStyle}">Auto-Action Einstellungen</a>`;
 
-        // Statusleiste HTML (keine feste Positionierung, sondern Teil des Seitenflusses)
+        // Statusleiste HTML (nun absolut positioniert innerhalb von tw_auto_action_buttons_row)
         const statusBarHtml = `
-            <div id="tw_auto_action_status_bar" style="background-color: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 3px; font-size: 12px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 5px;">
+            <div id="tw_auto_action_status_bar" style="
+                position: absolute;
+                top: 100%; /* Position unter den Buttons */
+                left: 0; /* Beginn am linken Rand des Button-Containers */
+                background-color: rgba(0,0,0,0.7);
+                color: white;
+                padding: 5px 10px;
+                border-radius: 3px;
+                font-size: 12px;
+                text-align: left;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                transform: translateY(5px); /* Zusätzlicher Abstand nach unten */
+            ">
                 TW Auto-Action ist bereit.
             </div>
         `;
 
         // Haupt-Container für Buttons und Statusleiste
+        // buttons_row ist nun 'position: relative;' damit statusBarHtml absolut innerhalb positioniert werden kann
         const mainContainerHtml = `
             <div id="tw_auto_action_main_container" style="margin-bottom: 15px; margin-top: 5px; width: 100%; box-sizing: border-box;">
-                <div id="tw_auto_action_buttons_row" style="display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 5px;">
+                <div id="tw_auto_action_buttons_row" style="position: relative; display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 10px;">
                     ${toggleButtonHtml}
                     ${activateSoundButtonHtml}
                     ${settingsButtonHtml}
-                </div>
-                ${statusBarHtml}
+                    ${statusBarHtml} </div>
             </div>
         `;
 
@@ -751,7 +765,7 @@
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
         activateSoundButtonRef = mainContainerRef.find('#tw_auto_action_activate_sound_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
-        statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
+        statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar'); // Statusleiste ist jetzt ein Kind von buttons_row, aber find funktioniert weiterhin global
 
         // Event-Listener zuweisen
         if (settingsButtonRef.length > 0) {
