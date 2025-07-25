@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.7 // Version auf 3.7 aktualisiert für Audio-Feedback bei Botschutz
+// @version       3.10 // Version auf 3.10 aktualisiert für präzisere Botschutz-Erkennung (Tooltip des Männchens)
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -37,11 +37,10 @@
             try {
                 const parsed = JSON.parse(savedSettings);
                 currentSettings = { ...defaultSettings, ...parsed };
-                // Sicherstellen, dass toggleKeyCode und toggleKeyChar konsistent sind
                 if (!currentSettings.toggleKeyChar && currentSettings.toggleKeyCode) {
                     currentSettings.toggleKeyChar = currentSettings.toggleKeyCode.replace('Key', '').replace('Digit', '');
                     if (currentSettings.toggleKeyCode === 'Space') currentSettings.toggleKeyChar = ' ';
-                } else if (!currentSettings.toggleKeyCode && currentSettings.toggleKeyChar) {
+                } else if (!currentSettings.toggleKeyChar && currentSettings.toggleKeyChar) {
                     currentSettings.toggleKeyCode = getKeyCodeFromChar(currentSettings.toggleKeyChar);
                 }
             } catch (e) {
@@ -68,24 +67,23 @@
             return 'Digit' + char;
         }
         if (char === ' ') return 'Space';
-        return null; // Ungültiges Zeichen
+        return null;
     }
 
     // --- Skript-Variablen ---
     let autoActionActive = false;
     let autoActionIntervalId = null;
-    let botProtectionDetected = false; // Neuer Status für Botschutz
-    let noFarmButtonsDetected = false; // Neuer Status für fehlende Farm-Buttons
+    let botProtectionDetected = false;
+    let noFarmButtonsDetected = false;
 
     // --- Hilfsfunktion zum Generieren eines zufälligen Intervalls ---
     function getRandomInterval(min, max) {
         return Math.floor(Math.random() * (max - min + 1)) + min;
     }
 
-    // --- NEUE FUNKTION: Ton abspielen ---
+    // --- Ton abspielen ---
     function playAntiBotSound() {
         try {
-            // Dies erzeugt einen kurzen Piepton über die Web Audio API
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const oscillator = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
@@ -93,18 +91,15 @@
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
-            oscillator.type = 'sine'; // Sinuswelle für sanfteren Ton
-            oscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // 440 Hz (A4)
-            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime); // Lautstärke
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
 
             oscillator.start();
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5); // Ton nach 0.5 Sekunden ausklingen lassen
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
             oscillator.stop(audioCtx.currentTime + 0.5);
         } catch (e) {
             console.warn("TW Auto-Action: Fehler beim Abspielen des Anti-Bot-Sounds.", e);
-            // Fallback für Browser, die Web Audio API nicht unterstützen
-            // new Audio('https://www.soundjay.com/buttons/beep-01a.mp3').play(); // Beispiel-Sound (benötigt HTTPS)
-            // Oder einfach console.log, wenn kein Sound möglich ist
         }
     }
 
@@ -113,21 +108,31 @@
     function checkAntiBotProtection() {
         const botProtectionSelectors = [
             '#bot_protect_dialog',
+            'div[data-id="bot_protection"]',
+            '#popup_box_bot_protection',
+            'div#tooltip:contains("Bot-Schutz")', // NEU: Für das Männchen/Tooltip, nur wenn sichtbar und mit dem Text "Bot-Schutz"
             '.popup_box_container:contains("Sicherheitsabfrage")',
+            '.popup_box_container:contains("Bot-Schutz")',
             'div[data-bot-check="true"]',
             'img[src*="captcha"]',
             'input[name="captcha_code"]',
-            '.popup_box:contains("Botschutz")',
             '.modem-window:contains("Sicherheitsprüfung")',
             '#recaptcha-challenge',
             '#bot_captcha_div',
-            'div.error:contains("Bitte bestätigen Sie, dass Sie kein Bot sind.")'
+            'div.error:contains("Bitte bestätigen Sie, dass Sie kein Bot sind.")',
+            // Selektoren für das Männchen-Icon selbst, falls es OHNE dieses Tooltip erscheint (derzeit auskommentiert):
+            // 'div#ds_bottom_row div.bot-protection-icon',
+            // 'img[src*="bot_alert_icon"]',
+            // '#bot_protection_indicator.new_message_count_box',
+            // 'div[aria-label*="Botschutz-Abfrage"]',
+            // '.menu-item-anti-bot-protection',
         ];
 
         let isBotProtectionVisible = false;
         for (const selector of botProtectionSelectors) {
             const element = $(selector);
-            if (element.length > 0 && element.is(':visible')) {
+            // Zusätzliche Prüfungen für Sichtbarkeit und "aktiv" sein
+            if (element.length > 0 && element.is(':visible') && element.css('display') !== 'none' && element.css('visibility') !== 'hidden' && element.attr('disabled') !== 'disabled') {
                 isBotProtectionVisible = true;
                 break;
             }
@@ -136,7 +141,7 @@
         if (isBotProtectionVisible) {
             if (!botProtectionDetected) {
                 botProtectionDetected = true;
-                playAntiBotSound(); // Hier wird der Ton abgespielt!
+                playAntiBotSound();
 
                 if (autoActionActive && currentSettings.pauseOnBotProtection) {
                     clearInterval(autoActionIntervalId);
@@ -149,18 +154,18 @@
                 } else if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
                     UI.ErrorMessage('Botschutz-Abfrage erkannt! Auto-Action ist nicht aktiv oder pausiert nicht automatisch.', 5000);
                 }
-                updateUIStatus(); // UI-Status aktualisieren
+                updateUIStatus();
             }
-            return true; // Botschutz erkannt
+            return true;
         } else {
             if (botProtectionDetected) {
                 botProtectionDetected = false;
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Botschutz-Abfrage nicht mehr sichtbar. Auto-Action kann bei Bedarf wieder gestartet werden.', 3000);
                 }
-                updateUIStatus(); // UI-Status aktualisieren
+                updateUIStatus();
             }
-            return false; // Kein Botschutz erkannt
+            return false;
         }
     }
 
@@ -514,7 +519,7 @@
                 if (currentSettings.requiredShift) hotkeyDisplay = 'Shift + ' + hotkeyDisplay;
                 hotkeyDisplay = hotkeyDisplay.replace(/\s\+\s$/, '');
 
-                UI.InfoMessage('TW Auto-Action (v3.7) ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
+                UI.InfoMessage('TW Auto-Action (v3.10) ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über externen JavaScript-Aufruf (window.toggleTribalAutoAction()).', 3000);
             }
         }, 1000);
 
@@ -557,6 +562,7 @@
 
         observer.observe(document.body, observerConfig);
 
+        // Initialprüfung beim Laden der Seite
         checkAntiBotProtection();
         if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
             const farmButton = $(FARM_BUTTON_SELECTOR).first();
