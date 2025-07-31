@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.4.2 // Version auf 3.4.2 aktualisiert - Textfarbe und Audio geprüft
+// @version       3.4.3 // Version auf 3.4.3 aktualisiert - Start-Ton an Einstellung gekoppelt
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.4.2'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.4.3'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -176,8 +176,13 @@
     }
 
     // Funktion für den Aktivierungs-Test-Ton (spielt den aktuell ausgewählten Ton, entsperrt Context)
+    // DIESE FUNKTION WURDE ANGEPASST, UM currentSettings.soundEnabled ZU PRÜFEN
     function playActivationTestTone() {
         console.log('TW Auto-Action: Test-Ton durch Aktivierung angefordert...');
+        if (!currentSettings.soundEnabled) { // Hinzugefügte Prüfung
+            console.log('TW Auto-Action: Sound ist in den Einstellungen deaktiviert. Überspringe Test-Ton.');
+            return;
+        }
         const profileToPlay = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
         createAndPlayOscillator(profileToPlay);
     }
@@ -324,7 +329,8 @@
             noFarmButtonsDetected = false;
             botProtectionDetected = false;
         } else {
-            playActivationTestTone();
+            // Ton nur abspielen, wenn in den Einstellungen aktiviert
+            playActivationTestTone(); // Diese Funktion prüft nun selbst die Einstellung
 
             if (checkAntiBotProtection()) {
                 return;
@@ -556,7 +562,6 @@
         let currentStatusText = 'TW Auto-Action ist bereit.';
         let statusBarBgColor = '#ffc107';
 
-        // Die Textfarbe für die Buttons ist jetzt fest in den jeweiligen Styles definiert.
         const defaultButtonBg = '#f0e2b6';
         const defaultButtonBorder = '#804000';
 
@@ -624,7 +629,6 @@
             }
         }
 
-        // Grundlegende Styles für alle Buttons. Textfarbe ist hier fest auf Weiß gesetzt.
         const buttonBaseStyle = `
             white-space: nowrap;
             display: inline-block;
