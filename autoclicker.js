@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.4 // Version auf 3.4 aktualisiert - Ton aktiv Button entfernt
+// @version       3.4.1 // Version auf 3.4.1 aktualisiert - Positionierung korrigiert
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.4'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.4.1'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -597,7 +597,7 @@
 
         const defaultButtonBg = '#f0e2b6';
         const defaultButtonBorder = '#804000';
-        const defaultButtonText = '#FFFFFF';
+        const defaultButtonText = '#FFFFFF'; // Textfarbe ist weiß
 
         if (settingsButtonRef) {
             settingsButtonRef.css({
@@ -645,23 +645,26 @@
     }
 
     function addAmFarmSettingsButton() {
-        // Sicherstellen, dass wir auf der Farm-Seite sind und jQuery geladen ist
         if (typeof game_data === 'undefined' || game_data.screen !== 'am_farm' || typeof $ === 'undefined') {
             console.log("TW Auto-Action: Nicht auf Farm-Seite oder jQuery nicht geladen.");
             return;
         }
 
-        // Versuche, einen flexibleren Einfügepunkt zu finden:
-        // Div mit id 'content_value', dann nach einer Überschrift oder einem div mit class 'box-item'
-        // Das ist robuster, falls sich die exakten Überschriftstexte ändern.
-        let targetElement = $('#content_value').find('h3, h2, h4.screen-title, div.box-item').first();
+        // Finde das Haupt-Content-Element der Farm-Seite
+        const contentValue = $('#content_value');
+        if (contentValue.length === 0) {
+            console.warn("TW Auto-Action: Konnte das '#content_value' Element nicht finden. Buttons werden nicht angezeigt.");
+            return;
+        }
 
-        // Fallback: Wenn kein passendes Element gefunden wird, versuchen Sie, es direkt an content_value anzuhängen
+        // Versuche, das erste "vis" (Standard-Tabellen-Stil) Tabelle zu finden und davor einzufügen
+        let targetElement = contentValue.find('table.vis').first();
+
+        // Fallback: Wenn keine 'table.vis' gefunden, versuche es vor der ersten 'h3' oder direkt im 'content_value'
         if (targetElement.length === 0) {
-            targetElement = $('#content_value');
+            targetElement = contentValue.find('h3').first();
             if (targetElement.length === 0) {
-                console.warn("TW Auto-Action: Konnte keinen geeigneten Einfügepunkt für Buttons finden. Buttons werden nicht angezeigt.");
-                return;
+                 targetElement = contentValue; // Notfalls direkt in content_value
             }
         }
 
@@ -699,20 +702,27 @@
             </div>
         `;
 
+        // Haupt-Container für Buttons und Statusleiste
+        // Wichtig: 'margin-top' und 'margin-bottom' anpassen, damit genug Platz ist und es nicht "klebt"
         const mainContainerHtml = `
-            <div id="tw_auto_action_main_container" style="margin-bottom: 15px; margin-top: 5px; width: 100%; box-sizing: border-box;">
-                <div id="tw_auto_action_buttons_row" style="display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 10px;">
-                    ${toggleButtonHtml}
-                    ${settingsButtonHtml}
-                    ${statusBarHtml}
-                </div>
+            <div id="tw_auto_action_main_container" style="
+                display: flex;
+                justify-content: flex-start;
+                align-items: center;
+                gap: 10px;
+                margin-top: 15px; /* Abstand nach oben */
+                margin-bottom: 15px; /* Abstand nach unten */
+                width: 100%;
+                box-sizing: border-box;
+            ">
+                ${toggleButtonHtml}
+                ${settingsButtonHtml}
+                ${statusBarHtml}
             </div>
         `;
 
         // Einfügen des Containers
-        targetElement.before(mainContainerHtml); // Versuche vor dem Ziel einzufügen
-        // Eine Alternative wäre targetElement.append() oder .prepend(), je nachdem, wo es am besten aussieht.
-        // Für Überschriften ist .before() oft besser, für allgemeine divs .prepend() oder .append()
+        targetElement.before(mainContainerHtml);
 
         // Referenzen holen
         mainContainerRef = $('#tw_auto_action_main_container');
@@ -748,7 +758,6 @@
             return;
         }
 
-        // Führe den Rest der Initialisierung nur aus, wenn jQuery bereit ist
         $(document).ready(function() {
             addAmFarmSettingsButton();
 
