@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.4.1 // Version auf 3.4.1 aktualisiert - Positionierung korrigiert
+// @version       3.4.2 // Version auf 3.4.2 aktualisiert - Textfarbe und Audio geprüft
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.4.1'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.4.2'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -107,127 +107,87 @@
     // --- AudioContext und Sound-Funktionen ---
     let audioCtx = null; // Globale Referenz für AudioContext
 
-    function createAndPlayOscillator(profile) {
+    // Funktion zum Initialisieren des AudioContext (lazy loading)
+    function getAudioContext() {
         if (!audioCtx || audioCtx.state === 'closed') {
-            console.warn('TW Auto-Action: AudioContext nicht bereit für die Wiedergabe des Oszillators.');
-            return;
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('TW Auto-Action: AudioContext initialisiert. Zustand:', audioCtx.state);
+            } catch (e) {
+                console.error("TW Auto-Action: FEHLER beim Initialisieren des AudioContext:", e);
+                return null;
+            }
         }
-        try {
-            const oscillator = audioCtx.createOscillator();
-            const gainNode = audioCtx.createGain();
-
-            oscillator.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            oscillator.type = profile.type;
-            oscillator.frequency.setValueAtTime(profile.frequency, audioCtx.currentTime);
-            gainNode.gain.setValueAtTime(profile.volume, audioCtx.currentTime);
-
-            oscillator.start();
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + profile.duration);
-            oscillator.stop(audioCtx.currentTime + profile.duration);
-            console.log(`TW Auto-Action: Oszillator-Ton '${profile.name}' gestartet.`);
-        } catch (e) {
-            console.error("TW Auto-Action: FEHLER beim Erzeugen oder Starten des Oszillators.", e);
-        }
+        return audioCtx;
     }
 
+    // Funktion zum Wiederaufnehmen des AudioContext, falls suspended
+    function resumeAudioContext(context) {
+        if (context && context.state === 'suspended') {
+            console.log('TW Auto-Action: AudioContext ist ausgesetzt, versuche Fortsetzung...');
+            return context.resume().then(() => {
+                console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt. Zustand:', context.state);
+            }).catch(e => {
+                console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext.", e);
+                throw e; // Fehler weiterwerfen
+            });
+        }
+        return Promise.resolve(); // Kontext ist bereits running oder kein Kontext
+    }
+
+    // Funktion zum Erzeugen und Abspielen eines Oszillators mit Profil-Parametern
+    function createAndPlayOscillator(profile) {
+        const context = getAudioContext();
+        if (!context) return;
+
+        resumeAudioContext(context).then(() => {
+            try {
+                const oscillator = context.createOscillator();
+                const gainNode = context.createGain();
+
+                oscillator.connect(gainNode);
+                gainNode.connect(context.destination);
+
+                oscillator.type = profile.type;
+                oscillator.frequency.setValueAtTime(profile.frequency, context.currentTime);
+                gainNode.gain.setValueAtTime(profile.volume, context.currentTime);
+
+                oscillator.start();
+                gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + profile.duration);
+                oscillator.stop(context.currentTime + profile.duration);
+                console.log(`TW Auto-Action: Oszillator-Ton '${profile.name}' abgespielt.`);
+            } catch (e) {
+                console.error("TW Auto-Action: FEHLER beim Erzeugen oder Starten des Oszillators.", e);
+            }
+        }).catch(e => {
+            console.error("TW Auto-Action: Konnte Ton nicht abspielen, AudioContext Resume fehlgeschlagen.", e);
+        });
+    }
+
+    // Funktion zum Triggern des Botschutz-Tons (respektiert Einstellung)
     function triggerAntiBotSound() {
         console.log('TW Auto-Action: Trigger Botschutz-Ton (geprüft nach Einstellung)...');
         if (!currentSettings.soundEnabled) {
             console.log('TW Auto-Action: Botschutz-Ton ist in den Einstellungen deaktiviert. Überspringe Wiedergabe.');
             return;
         }
-
-        try {
-            if (!audioCtx || audioCtx.state === 'closed') {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                console.log('TW Auto-Action: AudioContext initialisiert (durch Botschutz-Trigger). Zustand:', audioCtx.state);
-            }
-
-            const actuallyPlaySound = () => {
-                   const profile = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
-                   console.log('TW Auto-Action: Botschutz-Ton wird abgespielt.');
-                   createAndPlayOscillator(profile);
-            };
-
-            if (audioCtx.state === 'suspended') {
-                console.log('TW Auto-Action: AudioContext ist ausgesetzt (durch Botschutz-Trigger), versuche Fortsetzung...');
-                audioCtx.resume().then(() => {
-                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt (durch Botschutz-Trigger).');
-                    actuallyPlaySound();
-                }).catch(e => {
-                    console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext (durch Botschutz-Trigger).", e);
-                });
-            } else if (audioCtx.state === 'running') {
-                console.log('TW Auto-Action: AudioContext läuft bereits (durch Botschutz-Trigger).');
-                actuallyPlaySound();
-            } else {
-                console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand (durch Botschutz-Trigger):', audioCtx.state);
-            }
-        } catch (e) {
-            console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Anti-Bot-Sounds (durch Botschutz-Trigger).", e);
-        }
+        const profile = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
+        createAndPlayOscillator(profile);
     }
 
+    // Funktion für den Aktivierungs-Test-Ton (spielt den aktuell ausgewählten Ton, entsperrt Context)
     function playActivationTestTone() {
-        console.log('TW Auto-Action: Test-Ton durch Aktivierungs-Button angefordert...');
-        try {
-            if (!audioCtx || audioCtx.state === 'closed') {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                console.log('TW Auto-Action: AudioContext initialisiert (durch Aktivierungs-Button). Zustand:', audioCtx.state);
-            }
-
-            const profileToPlay = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
-
-            if (audioCtx.state === 'suspended') {
-                console.log('TW Auto-Action: AudioContext ist ausgesetzt (durch Aktivierungs-Button), versuche Fortsetzung...');
-                audioCtx.resume().then(() => {
-                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt (durch Aktivierungs-Button), spiele Test-Ton ab.');
-                    createAndPlayOscillator(profileToPlay);
-                }).catch(e => {
-                    console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext (durch Aktivierungs-Button).", e);
-                });
-            } else if (audioCtx.state === 'running') {
-                console.log('TW Auto-Action: AudioContext läuft bereits (durch Aktivierungs-Button), spiele Test-Ton ab.');
-                createAndPlayOscillator(profileToPlay);
-            } else {
-                console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand (durch Aktivierungs-Button):', audioCtx.state);
-            }
-        } catch (e) {
-            console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Test-Tons (durch Aktivierungs-Button).", e);
-        }
+        console.log('TW Auto-Action: Test-Ton durch Aktivierung angefordert...');
+        const profileToPlay = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
+        createAndPlayOscillator(profileToPlay);
     }
 
+    // Funktion zum Abspielen des ausgewählten Sounds aus den Einstellungen (für Vorschau)
     function playSelectedSoundPreview() {
         const selectedKey = $('#setting_selected_sound').val();
         const profile = soundProfiles[selectedKey] || soundProfiles['default'];
-
         console.log(`TW Auto-Action: Spiele Vorschau-Ton: ${profile.name}`);
-
-        try {
-            if (!audioCtx || audioCtx.state === 'closed') {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                console.log('TW Auto-Action: AudioContext initialisiert (für Vorschau). Zustand:', audioCtx.state);
-            }
-
-            if (audioCtx.state === 'suspended') {
-                console.log('TW Auto-Action: AudioContext ist ausgesetzt (für Vorschau), versuche Fortsetzung...');
-                audioCtx.resume().then(() => {
-                    console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt (für Vorschau).');
-                    createAndPlayOscillator(profile);
-                }).catch(e => {
-                    console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext (für Vorschau).", e);
-                });
-            } else if (audioCtx.state === 'running') {
-                console.log('TW Auto-Action: AudioContext läuft bereits (für Vorschau).');
-                createAndPlayOscillator(profile);
-            } else {
-                console.warn('TW Auto-Action: AudioContext ist in unerwartetem Zustand (für Vorschau):', audioCtx.state);
-            }
-        } catch (e) {
-            console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Vorschau-Tons.", e);
-        }
+        createAndPlayOscillator(profile);
     }
 
     // --- Botschutz-Erkennung ---
@@ -252,7 +212,8 @@
         let isBotProtectionVisible = false;
         for (const selector of botProtectionSelectors) {
             const element = $(selector);
-            if (element.length > 0 && element.is(':visible') && element.css('display') !== 'none' && element.css('visibility') !== 'hidden' && element.attr('disabled') !== 'disabled') {
+            // Zusätzliche Überprüfung auf Höhe und Breite, um unsichtbare/geblitzte Elemente auszuschließen
+            if (element.length > 0 && element.is(':visible') && element.css('display') !== 'none' && element.css('visibility') !== 'hidden' && element.attr('disabled') !== 'disabled' && element.outerWidth() > 0 && element.outerHeight() > 0) {
                 isBotProtectionVisible = true;
                 break;
             }
@@ -441,12 +402,12 @@
                         border: 1px solid #804000;
                         border-radius: 3px;
                         background-color: #f0e2b6;
-                        color: #5b3617;
+                        color: #FFFFFF; /* Einstellungsdialog Button Textfarbe */
                     }
                     #tw_auto_action_settings_dialog_content .btn-red {
                         background-color: #d1b790;
                         border-color: #6d3300;
-                        color: #3b1e0a;
+                        color: #FFFFFF; /* Einstellungsdialog Button Textfarbe */
                     }
                     #tw_auto_action_settings_dialog_content h3 {
                         color: #804000;
@@ -595,14 +556,13 @@
         let currentStatusText = 'TW Auto-Action ist bereit.';
         let statusBarBgColor = '#ffc107';
 
+        // Die Textfarbe für die Buttons ist jetzt fest in den jeweiligen Styles definiert.
         const defaultButtonBg = '#f0e2b6';
         const defaultButtonBorder = '#804000';
-        const defaultButtonText = '#FFFFFF'; // Textfarbe ist weiß
 
         if (settingsButtonRef) {
             settingsButtonRef.css({
                 'background-color': defaultButtonBg,
-                'color': defaultButtonText,
                 'border-color': defaultButtonBorder
             });
         }
@@ -611,7 +571,6 @@
             toggleButtonRef.text(autoActionActive ? 'Auto-Action Stopp' : 'Auto-Action Start');
             toggleButtonRef.css({
                 'background-color': defaultButtonBg,
-                'color': defaultButtonText,
                 'border-color': defaultButtonBorder
             });
         }
@@ -650,24 +609,22 @@
             return;
         }
 
-        // Finde das Haupt-Content-Element der Farm-Seite
         const contentValue = $('#content_value');
         if (contentValue.length === 0) {
             console.warn("TW Auto-Action: Konnte das '#content_value' Element nicht finden. Buttons werden nicht angezeigt.");
             return;
         }
 
-        // Versuche, das erste "vis" (Standard-Tabellen-Stil) Tabelle zu finden und davor einzufügen
         let targetElement = contentValue.find('table.vis').first();
 
-        // Fallback: Wenn keine 'table.vis' gefunden, versuche es vor der ersten 'h3' oder direkt im 'content_value'
         if (targetElement.length === 0) {
             targetElement = contentValue.find('h3').first();
             if (targetElement.length === 0) {
-                 targetElement = contentValue; // Notfalls direkt in content_value
+                 targetElement = contentValue;
             }
         }
 
+        // Grundlegende Styles für alle Buttons. Textfarbe ist hier fest auf Weiß gesetzt.
         const buttonBaseStyle = `
             white-space: nowrap;
             display: inline-block;
@@ -702,16 +659,14 @@
             </div>
         `;
 
-        // Haupt-Container für Buttons und Statusleiste
-        // Wichtig: 'margin-top' und 'margin-bottom' anpassen, damit genug Platz ist und es nicht "klebt"
         const mainContainerHtml = `
             <div id="tw_auto_action_main_container" style="
                 display: flex;
                 justify-content: flex-start;
                 align-items: center;
                 gap: 10px;
-                margin-top: 15px; /* Abstand nach oben */
-                margin-bottom: 15px; /* Abstand nach unten */
+                margin-top: 15px;
+                margin-bottom: 15px;
                 width: 100%;
                 box-sizing: border-box;
             ">
@@ -721,10 +676,8 @@
             </div>
         `;
 
-        // Einfügen des Containers
         targetElement.before(mainContainerHtml);
 
-        // Referenzen holen
         mainContainerRef = $('#tw_auto_action_main_container');
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
@@ -750,7 +703,6 @@
     // --- Skript-Initialisierung ---
     loadSettings();
 
-    // jQuery bereit? Falls nicht, warte und versuche es erneut
     function initializeScript() {
         if (typeof $ === 'undefined') {
             console.log('TW Auto-Action: jQuery noch nicht geladen, warte 100ms...');
