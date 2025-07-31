@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.35 // Version auf 3.35 aktualisiert - Statusleiste nun direkt neben den Buttons
+// @version       3.4 // Version auf 3.4 aktualisiert - Ton aktiv Button entfernt
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.35'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.4'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -376,7 +376,7 @@
             botProtectionDetected = false;
         } else {
             // Beim Starten des Skripts durch Nutzerinteraktion: Versuche AudioContext zu aktivieren
-            // NEU: playActivationTestTone() wird hier aufgerufen, um den Sound zu aktivieren
+            // playActivationTestTone() wird hier aufgerufen, um den Sound zu aktivieren
             // und den AudioContext zu entsperren, wenn das Skript startet.
             playActivationTestTone(); // Funktion zum Aktivieren des Tons aufrufen
 
@@ -557,7 +557,7 @@
             }
 
             let newMinInterval = parseInt($('#setting_min_interval').val(), 10);
-            let newMaxInterval = parseInt($('#setting_max_interval').val(), 10); // Korrigiert: .val() war nicht geschlossen
+            let newMaxInterval = parseInt($('#$('#setting_max_interval').val()), 10); // Korrigiert: doppelte $('#...)-Aufrufe entfernt
 
             if (isNaN(newMinInterval) || newMinInterval < 50) newMinInterval = 50;
             if (isNaN(newMaxInterval) || newMaxInterval < newMinInterval) newMaxInterval = newMinInterval + 100;
@@ -605,7 +605,6 @@
 
     // --- Einstellungs-Button auf der Farm-Seite hinzufügen ---
     let settingsButtonRef = null;
-    // GELÖSCHT: activateSoundButtonRef = null; // Entfernt, da der Button "Ton Aktivieren" entfernt wird
     let toggleButtonRef = null;
     let statusBarRef = null; // Referenz auf die Statusleiste
     let mainContainerRef = null; // Neue Referenz für den Haupt-Container
@@ -620,7 +619,7 @@
         // Farben für Buttons - nun feste Werte
         const defaultButtonBg = '#f0e2b6';
         const defaultButtonBorder = '#804000';
-        const defaultButtonText = '#5b3617'; // Feste dunkle Schrift für Buttons (verbessert Kontrast)
+        const defaultButtonText = '#FFFFFF'; // HIER AUF WEISS GEÄNDERT
 
         // Update Settings Button (feste Farben)
         if (settingsButtonRef) {
@@ -630,16 +629,6 @@
                 'border-color': defaultButtonBorder
             });
         }
-
-        // GELÖSCHT: Update Activate Sound Button (feste Farben, Text kann sich ändern)
-        // if (activateSoundButtonRef) {
-        //     activateSoundButtonRef.css({
-        //         'background-color': defaultButtonBg,
-        //         'color': defaultButtonText,
-        //         'border-color': defaultButtonBorder
-        //     });
-        //     // Der Text "Ton Aktiv" wird nur beim Klick gesetzt und bleibt dann so
-        // }
 
         // Update Toggle Button (feste Farben, Text ändert sich zwischen Start/Stopp)
         if (toggleButtonRef) {
@@ -705,7 +694,7 @@
             cursor: pointer;
             font-weight: bold;
             border-radius: 3px;
-            color: #ffffff; /* Feste weiße Schrift */
+            color: #FFFFFF; /* HIER AUF WEISS GEÄNDERT */
             background-color: #f0e2b6; /* Feste neutrale Hintergrundfarbe */
             border: 1px solid #804000; /* Feste neutrale Rahmenfarbe */
         `;
@@ -713,7 +702,6 @@
         // HTML für die Buttons (Reihenfolge hier ist wichtig für flexbox justify-content: flex-start)
         // Visuell: Start/Stopp (links) -- Einstellungen (rechts)
         const toggleButtonHtml = `<a href="#" id="tw_auto_action_toggle_button" class="btn" style="${buttonBaseStyle}">Auto-Action Start/Stopp</a>`;
-        // GELÖSCHT: const activateSoundButtonHtml = `<a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle}">Ton Aktivieren</a>`;
         const settingsButtonHtml = `<a href="#" id="tw_auto_action_settings_button" class="btn" style="${buttonBaseStyle}">Auto-Action Einstellungen</a>`;
 
         // Statusleiste HTML - JETZT ALS NORMALES FLEX-ITEM, OHNE ABSOLUTE POSITIONIERUNG
@@ -753,7 +741,6 @@
 
         // Referenzen zu den eingefügten Elementen holen
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
-        // GELÖSCHT: activateSoundButtonRef = mainContainerRef.find('#tw_auto_action_activate_sound_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
         statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
 
@@ -764,19 +751,6 @@
                 openSettingsDialog();
             });
         }
-
-        // GELÖSCHT: Event Listener für den "Ton Aktivieren" Button
-        // if (activateSoundButtonRef.length > 0) {
-        //     activateSoundButtonRef.on('click', (e) => {
-        //         e.preventDefault();
-        //         playActivationTestTone();
-        //         activateSoundButtonRef.text('Ton Aktiv');
-        //         if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
-        //             UI.InfoMessage('Ton aktiviert! Er bleibt aktiv, bis die Seite komplett neu geladen wird.', 3000);
-        //         }
-        //         updateUIStatus();
-        //     });
-        // }
 
         if (toggleButtonRef.length > 0) {
             toggleButtonRef.on('click', (e) => {
