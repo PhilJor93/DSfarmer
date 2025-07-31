@@ -152,9 +152,9 @@
             }
 
             const actuallyPlaySound = () => {
-                 const profile = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
-                 console.log('TW Auto-Action: Botschutz-Ton wird abgespielt.');
-                 createAndPlayOscillator(profile);
+                   const profile = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
+                   console.log('TW Auto-Action: Botschutz-Ton wird abgespielt.');
+                   createAndPlayOscillator(profile);
             };
 
             if (audioCtx.state === 'suspended') {
@@ -177,6 +177,7 @@
     }
 
     // Funktion für den Aktivierungs-Test-Ton (spielt den aktuell ausgewählten Ton, entsperrt Context)
+    // Diese Funktion wird nun direkt vom toggleTribalAutoAction beim Start aufgerufen
     function playActivationTestTone() {
         console.log('TW Auto-Action: Test-Ton durch Aktivierungs-Button angefordert...');
         try {
@@ -298,7 +299,6 @@
         }
     }
 
-
     // --- Funktion zum Simulieren des Button-Klicks ---
     function simulateButtonClick() {
         if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
@@ -326,9 +326,9 @@
                         }
                         console.log('TW Auto-Action: Keine Farm-Buttons gefunden oder sichtbar. Skript gestoppt.');
                     } else {
-                         if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
-                            UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
-                        }
+                           if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                               UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
+                           }
                     }
                     updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
                 }
@@ -376,16 +376,9 @@
             botProtectionDetected = false;
         } else {
             // Beim Starten des Skripts durch Nutzerinteraktion: Versuche AudioContext zu aktivieren
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume().then(() => {
-                    console.log('TW Auto-Action: AudioContext beim Starten fortgesetzt durch Benutzerinteraktion.');
-                }).catch(e => {
-                    console.warn('TW Auto-Action: Fehler beim Fortsetzen des AudioContext beim Starten durch Benutzerinteraktion.', e);
-                });
-            }
+            // NEU: playActivationTestTone() wird hier aufgerufen, um den Sound zu aktivieren
+            // und den AudioContext zu entsperren, wenn das Skript startet.
+            playActivationTestTone(); // Funktion zum Aktivieren des Tons aufrufen
 
             if (checkAntiBotProtection()) {
                 // Wenn Botschutz direkt beim Start erkannt wird, wird der Status bereits in checkAntiBotProtection() aktualisiert
@@ -564,7 +557,7 @@
             }
 
             let newMinInterval = parseInt($('#setting_min_interval').val(), 10);
-            let newMaxInterval = parseInt($('#setting_max_interval', 10).val());
+            let newMaxInterval = parseInt($('#setting_max_interval').val(), 10); // Korrigiert: .val() war nicht geschlossen
 
             if (isNaN(newMinInterval) || newMinInterval < 50) newMinInterval = 50;
             if (isNaN(newMaxInterval) || newMaxInterval < newMinInterval) newMaxInterval = newMinInterval + 100;
@@ -582,11 +575,10 @@
 
             saveSettings();
             customDialogElement.remove();
-        customDialogElement = null;
+            customDialogElement = null;
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 UI.InfoMessage('Einstellungen gespeichert!', 2000);
             }
-
             // Beim Speichern der Einstellungen könnte der Zustand des Skripts geändert werden, daher aktualisieren
             if (autoActionActive) {
                 clearInterval(autoActionIntervalId);
@@ -613,7 +605,7 @@
 
     // --- Einstellungs-Button auf der Farm-Seite hinzufügen ---
     let settingsButtonRef = null;
-    let activateSoundButtonRef = null;
+    // GELÖSCHT: activateSoundButtonRef = null; // Entfernt, da der Button "Ton Aktivieren" entfernt wird
     let toggleButtonRef = null;
     let statusBarRef = null; // Referenz auf die Statusleiste
     let mainContainerRef = null; // Neue Referenz für den Haupt-Container
@@ -628,7 +620,7 @@
         // Farben für Buttons - nun feste Werte
         const defaultButtonBg = '#f0e2b6';
         const defaultButtonBorder = '#804000';
-        const defaultButtonText = '#ffffff'; // Feste weiße Schrift
+        const defaultButtonText = '#5b3617'; // Feste dunkle Schrift für Buttons (verbessert Kontrast)
 
         // Update Settings Button (feste Farben)
         if (settingsButtonRef) {
@@ -639,15 +631,15 @@
             });
         }
 
-        // Update Activate Sound Button (feste Farben, Text kann sich ändern)
-        if (activateSoundButtonRef) {
-            activateSoundButtonRef.css({
-                'background-color': defaultButtonBg,
-                'color': defaultButtonText,
-                'border-color': defaultButtonBorder
-            });
-            // Der Text "Ton Aktiv" wird nur beim Klick gesetzt und bleibt dann so
-        }
+        // GELÖSCHT: Update Activate Sound Button (feste Farben, Text kann sich ändern)
+        // if (activateSoundButtonRef) {
+        //     activateSoundButtonRef.css({
+        //         'background-color': defaultButtonBg,
+        //         'color': defaultButtonText,
+        //         'border-color': defaultButtonBorder
+        //     });
+        //     // Der Text "Ton Aktiv" wird nur beim Klick gesetzt und bleibt dann so
+        // }
 
         // Update Toggle Button (feste Farben, Text ändert sich zwischen Start/Stopp)
         if (toggleButtonRef) {
@@ -719,9 +711,9 @@
         `;
 
         // HTML für die Buttons (Reihenfolge hier ist wichtig für flexbox justify-content: flex-start)
-        // Visuell: Start/Stopp (links) -- Ton Aktivieren (Mitte) -- Einstellungen (rechts)
+        // Visuell: Start/Stopp (links) -- Einstellungen (rechts)
         const toggleButtonHtml = `<a href="#" id="tw_auto_action_toggle_button" class="btn" style="${buttonBaseStyle}">Auto-Action Start/Stopp</a>`;
-        const activateSoundButtonHtml = `<a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle}">Ton Aktivieren</a>`;
+        // GELÖSCHT: const activateSoundButtonHtml = `<a href="#" id="tw_auto_action_activate_sound_button" class="btn" style="${buttonBaseStyle}">Ton Aktivieren</a>`;
         const settingsButtonHtml = `<a href="#" id="tw_auto_action_settings_button" class="btn" style="${buttonBaseStyle}">Auto-Action Einstellungen</a>`;
 
         // Statusleiste HTML - JETZT ALS NORMALES FLEX-ITEM, OHNE ABSOLUTE POSITIONIERUNG
@@ -750,7 +742,6 @@
             <div id="tw_auto_action_main_container" style="margin-bottom: 15px; margin-top: 5px; width: 100%; box-sizing: border-box;">
                 <div id="tw_auto_action_buttons_row" style="display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 10px;">
                     ${toggleButtonHtml}
-                    ${activateSoundButtonHtml}
                     ${settingsButtonHtml}
                     ${statusBarHtml} </div>
             </div>
@@ -762,7 +753,7 @@
 
         // Referenzen zu den eingefügten Elementen holen
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
-        activateSoundButtonRef = mainContainerRef.find('#tw_auto_action_activate_sound_button');
+        // GELÖSCHT: activateSoundButtonRef = mainContainerRef.find('#tw_auto_action_activate_sound_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
         statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
 
@@ -774,17 +765,18 @@
             });
         }
 
-        if (activateSoundButtonRef.length > 0) {
-            activateSoundButtonRef.on('click', (e) => {
-                e.preventDefault();
-                playActivationTestTone();
-                activateSoundButtonRef.text('Ton Aktiv');
-                if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
-                    UI.InfoMessage('Ton aktiviert! Er bleibt aktiv, bis die Seite komplett neu geladen wird.', 3000);
-                }
-                updateUIStatus();
-            });
-        }
+        // GELÖSCHT: Event Listener für den "Ton Aktivieren" Button
+        // if (activateSoundButtonRef.length > 0) {
+        //     activateSoundButtonRef.on('click', (e) => {
+        //         e.preventDefault();
+        //         playActivationTestTone();
+        //         activateSoundButtonRef.text('Ton Aktiv');
+        //         if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+        //             UI.InfoMessage('Ton aktiviert! Er bleibt aktiv, bis die Seite komplett neu geladen wird.', 3000);
+        //         }
+        //         updateUIStatus();
+        //     });
+        // }
 
         if (toggleButtonRef.length > 0) {
             toggleButtonRef.on('click', (e) => {
