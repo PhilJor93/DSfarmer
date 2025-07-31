@@ -23,7 +23,6 @@
     const originalDocumentTitle = document.title;
 
     // --- Sound-Profile Definitionen ---
-    // Hier können weitere Sounds hinzugefügt oder bestehende angepasst werden
     const soundProfiles = {
         'default': { name: 'Standard (Hell)', frequency: 660, type: 'sine', duration: 0.8, volume: 0.5 },
         'alarm': { name: 'Alarm (Kurz & Hoch)', frequency: 880, type: 'triangle', duration: 0.4, volume: 0.6 },
@@ -57,14 +56,12 @@
             try {
                 const parsed = JSON.parse(savedSettings);
                 currentSettings = { ...defaultSettings, ...parsed };
-                // Sicherstellen, dass toggleKeyChar aus keyCode abgeleitet wird, falls es fehlt
                 if (!currentSettings.toggleKeyChar && currentSettings.toggleKeyCode) {
                     currentSettings.toggleKeyChar = currentSettings.toggleKeyCode.replace('Key', '').replace('Digit', '');
                     if (currentSettings.toggleKeyCode === 'Space') currentSettings.toggleKeyChar = ' ';
-                } else if (currentSettings.toggleKeyChar && !currentSettings.toggleKeyCode) { // Fallback, falls Char da, aber Code fehlt
+                } else if (currentSettings.toggleKeyChar && !currentSettings.toggleKeyCode) {
                     currentSettings.toggleKeyCode = getKeyCodeFromChar(currentSettings.toggleKeyChar);
                 }
-                // Sicherstellen, dass der ausgewählte Sound existiert, sonst auf 'default' zurückfallen
                 if (!soundProfiles[currentSettings.selectedSound]) {
                     currentSettings.selectedSound = 'default';
                 }
@@ -95,7 +92,6 @@
         return null;
     }
 
-
     // --- Skript-Variablen ---
     let autoActionActive = false;
     let autoActionIntervalId = null;
@@ -111,7 +107,6 @@
     // --- AudioContext und Sound-Funktionen ---
     let audioCtx = null; // Globale Referenz für AudioContext
 
-    // Funktion zum Erzeugen und Abspielen eines Oszillators mit Profil-Parametern
     function createAndPlayOscillator(profile) {
         if (!audioCtx || audioCtx.state === 'closed') {
             console.warn('TW Auto-Action: AudioContext nicht bereit für die Wiedergabe des Oszillators.');
@@ -137,7 +132,6 @@
         }
     }
 
-    // Funktion zum Triggern des Botschutz-Tons (respektiert Einstellung)
     function triggerAntiBotSound() {
         console.log('TW Auto-Action: Trigger Botschutz-Ton (geprüft nach Einstellung)...');
         if (!currentSettings.soundEnabled) {
@@ -176,8 +170,6 @@
         }
     }
 
-    // Funktion für den Aktivierungs-Test-Ton (spielt den aktuell ausgewählten Ton, entsperrt Context)
-    // Diese Funktion wird nun direkt vom toggleTribalAutoAction beim Start aufgerufen
     function playActivationTestTone() {
         console.log('TW Auto-Action: Test-Ton durch Aktivierungs-Button angefordert...');
         try {
@@ -186,7 +178,6 @@
                 console.log('TW Auto-Action: AudioContext initialisiert (durch Aktivierungs-Button). Zustand:', audioCtx.state);
             }
 
-            // Verwende das aktuell ausgewählte Sound-Profil für den Testton
             const profileToPlay = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
 
             if (audioCtx.state === 'suspended') {
@@ -208,10 +199,9 @@
         }
     }
 
-    // Funktion zum Abspielen des ausgewählten Sounds aus den Einstellungen (für Vorschau)
     function playSelectedSoundPreview() {
         const selectedKey = $('#setting_selected_sound').val();
-        const profile = soundProfiles[selectedKey] || soundProfiles['default']; // Fallback auf Standard
+        const profile = soundProfiles[selectedKey] || soundProfiles['default'];
 
         console.log(`TW Auto-Action: Spiele Vorschau-Ton: ${profile.name}`);
 
@@ -239,7 +229,6 @@
             console.error("TW Auto-Action: KRITISCHER FEHLER beim Initialisieren oder Abspielen des Vorschau-Tons.", e);
         }
     }
-
 
     // --- Botschutz-Erkennung ---
     function checkAntiBotProtection() {
@@ -272,7 +261,7 @@
         if (isBotProtectionVisible) {
             if (!botProtectionDetected) {
                 botProtectionDetected = true;
-                triggerAntiBotSound(); // Ruft triggerAntiBotSound() auf, die die soundEnabled-Einstellung prüft
+                triggerAntiBotSound();
                 if (autoActionActive && currentSettings.pauseOnBotProtection) {
                     clearInterval(autoActionIntervalId);
                     autoActionIntervalId = null;
@@ -284,7 +273,7 @@
                 } else if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
                     UI.ErrorMessage('Botschutz-Abfrage erkannt! Auto-Action ist nicht aktiv oder pausiert nicht automatisch.', 5000);
                 }
-                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+                updateUIStatus();
             }
             return true;
         } else {
@@ -293,7 +282,7 @@
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Botschutz-Abfrage nicht mehr sichtbar. Auto-Action kann bei Bedarf wieder gestartet werden.', 3000);
                 }
-                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+                updateUIStatus();
             }
             return false;
         }
@@ -311,7 +300,7 @@
             if (farmButton.length > 0 && farmButton.is(':visible') && !farmButton.is(':disabled')) {
                 if (noFarmButtonsDetected) {
                     noFarmButtonsDetected = false;
-                    updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+                    updateUIStatus();
                 }
                 farmButton.trigger('click');
             } else {
@@ -330,7 +319,7 @@
                                UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
                            }
                     }
-                    updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+                    updateUIStatus();
                 }
             }
         } else {
@@ -343,7 +332,7 @@
                 }
                 noFarmButtonsDetected = false;
                 botProtectionDetected = false;
-                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+                updateUIStatus();
             }
         }
     }
@@ -358,7 +347,6 @@
 
         if (isHotkeyCombination) {
             event.preventDefault();
-
             window.toggleTribalAutoAction();
         }
     });
@@ -375,13 +363,9 @@
             noFarmButtonsDetected = false;
             botProtectionDetected = false;
         } else {
-            // Beim Starten des Skripts durch Nutzerinteraktion: Versuche AudioContext zu aktivieren
-            // playActivationTestTone() wird hier aufgerufen, um den Sound zu aktivieren
-            // und den AudioContext zu entsperren, wenn das Skript startet.
-            playActivationTestTone(); // Funktion zum Aktivieren des Tons aufrufen
+            playActivationTestTone();
 
             if (checkAntiBotProtection()) {
-                // Wenn Botschutz direkt beim Start erkannt wird, wird der Status bereits in checkAntiBotProtection() aktualisiert
                 return;
             }
 
@@ -391,7 +375,7 @@
                     UI.ErrorMessage('Kann Auto-Action nicht starten: Keine Farm-Buttons gefunden oder sie sind nicht sichtbar/aktiv.', 4000);
                 }
                 noFarmButtonsDetected = true;
-                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+                updateUIStatus();
                 return;
             }
 
@@ -418,7 +402,7 @@
             }
             noFarmButtonsDetected = false;
         }
-        updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+        updateUIStatus();
     };
 
     // --- PRÄZISER SELEKTOR FÜR BELIEBIGEN FARMGOD BUTTON ---
@@ -456,13 +440,13 @@
                         font-weight: bold;
                         border: 1px solid #804000;
                         border-radius: 3px;
-                        background-color: #f0e2b6; /* Einheitliche Farbe */
-                        color: #5b3617; /* Dunkler Text für Dialog-Buttons */
+                        background-color: #f0e2b6;
+                        color: #5b3617;
                     }
                     #tw_auto_action_settings_dialog_content .btn-red {
-                        background-color: #d1b790; /* Einheitliche Farbe */
+                        background-color: #d1b790;
                         border-color: #6d3300;
-                        color: #3b1e0a; /* Dunkler Text für Dialog-Buttons */
+                        color: #3b1e0a;
                     }
                     #tw_auto_action_settings_dialog_content h3 {
                         color: #804000;
@@ -476,7 +460,7 @@
                         margin-bottom: 5px;
                     }
                     #tw_auto_action_settings_dialog_content select {
-                        width: calc(100% - 80px); /* Angepasst für Button */
+                        width: calc(100% - 80px);
                         padding: 5px;
                         box-sizing: border-box;
                         border: 1px solid #c2c2c2;
@@ -488,7 +472,7 @@
                         width: auto;
                         padding: 5px 10px;
                         margin-left: 5px;
-                        margin-top: 0; /* Wichtig, damit es in der Reihe bleibt */
+                        margin-top: 0;
                         display: inline-block;
                         vertical-align: middle;
                     }
@@ -544,7 +528,6 @@
 
         $('body').append(customDialogElement);
 
-
         $('#tw_auto_action_save_settings').on('click', () => {
             const newToggleKeyChar = $('#setting_toggle_key_char').val().toUpperCase();
             const newToggleKeyCode = getKeyCodeFromChar(newToggleKeyChar);
@@ -557,7 +540,7 @@
             }
 
             let newMinInterval = parseInt($('#setting_min_interval').val(), 10);
-            let newMaxInterval = parseInt($('#$('#setting_max_interval').val()), 10); // Korrigiert: doppelte $('#...)-Aufrufe entfernt
+            let newMaxInterval = parseInt($('#setting_max_interval').val(), 10);
 
             if (isNaN(newMinInterval) || newMinInterval < 50) newMinInterval = 50;
             if (isNaN(newMaxInterval) || newMaxInterval < newMinInterval) newMaxInterval = newMinInterval + 100;
@@ -571,7 +554,7 @@
             currentSettings.maxInterval = newMaxInterval;
             currentSettings.pauseOnBotProtection = $('#setting_pause_on_bot_protection').is(':checked');
             currentSettings.soundEnabled = $('#setting_sound_enabled').is(':checked');
-            currentSettings.selectedSound = $('#setting_selected_sound').val(); // Ausgewählten Sound speichern
+            currentSettings.selectedSound = $('#setting_selected_sound').val();
 
             saveSettings();
             customDialogElement.remove();
@@ -579,7 +562,6 @@
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 UI.InfoMessage('Einstellungen gespeichert!', 2000);
             }
-            // Beim Speichern der Einstellungen könnte der Zustand des Skripts geändert werden, daher aktualisieren
             if (autoActionActive) {
                 clearInterval(autoActionIntervalId);
                 autoActionIntervalId = null;
@@ -588,7 +570,7 @@
                     UI.InfoMessage('Skript pausiert. Starte per Hotkey oder extern zum Neustart mit neuen Einstellungen.', 3000);
                 }
             }
-            updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+            updateUIStatus();
         });
 
         $('#tw_auto_action_close_settings').on('click', () => {
@@ -596,7 +578,6 @@
             customDialogElement = null;
         });
 
-        // Klick-Handler für den "Hören"-Button im Einstellungsdialog
         $('#tw_auto_action_preview_sound').on('click', (e) => {
             e.preventDefault();
             playSelectedSoundPreview();
@@ -606,22 +587,18 @@
     // --- Einstellungs-Button auf der Farm-Seite hinzufügen ---
     let settingsButtonRef = null;
     let toggleButtonRef = null;
-    let statusBarRef = null; // Referenz auf die Statusleiste
-    let mainContainerRef = null; // Neue Referenz für den Haupt-Container
+    let statusBarRef = null;
+    let mainContainerRef = null;
 
-
-    // Funktion zum Aktualisieren des UI-Status (Button-Text, Farbe und NEU: Tab-Titel & Statusleiste)
     function updateUIStatus() {
-        let currentTabTitle = originalDocumentTitle; // Startet mit dem Originaltitel
-        let currentStatusText = 'TW Auto-Action ist bereit.'; // Standardtext für die Statusleiste
-        let statusBarBgColor = '#ffc107'; // Standard: Gelb für Inaktiv/Bereit/Keine Buttons
+        let currentTabTitle = originalDocumentTitle;
+        let currentStatusText = 'TW Auto-Action ist bereit.';
+        let statusBarBgColor = '#ffc107';
 
-        // Farben für Buttons - nun feste Werte
         const defaultButtonBg = '#f0e2b6';
         const defaultButtonBorder = '#804000';
-        const defaultButtonText = '#FFFFFF'; // HIER AUF WEISS GEÄNDERT
+        const defaultButtonText = '#FFFFFF';
 
-        // Update Settings Button (feste Farben)
         if (settingsButtonRef) {
             settingsButtonRef.css({
                 'background-color': defaultButtonBg,
@@ -630,7 +607,6 @@
             });
         }
 
-        // Update Toggle Button (feste Farben, Text ändert sich zwischen Start/Stopp)
         if (toggleButtonRef) {
             toggleButtonRef.text(autoActionActive ? 'Auto-Action Stopp' : 'Auto-Action Start');
             toggleButtonRef.css({
@@ -640,53 +616,55 @@
             });
         }
 
-        // --- Logik für die Statusleiste (Farbe und Text) ---
         if (botProtectionDetected) {
-            statusBarBgColor = '#dc3545'; // Rot
+            statusBarBgColor = '#dc3545';
             currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
             currentStatusText = '[BOTSCHUTZ] Auto-Action pausiert!';
         } else if (autoActionActive) {
-            statusBarBgColor = '#28a745'; // Grün
+            statusBarBgColor = '#28a745';
             currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
             currentStatusText = '[AKTIV] Auto-Action läuft...';
         } else if (noFarmButtonsDetected) {
-            statusBarBgColor = '#ffc107'; // Gelb
+            statusBarBgColor = '#ffc107';
             currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
             currentStatusText = '[KEINE BUTTONS] Auto-Action gestoppt.';
-        } else { // Inaktiv oder Bereit (Initialzustand)
-            statusBarBgColor = '#ffc107'; // Gelb
+        } else {
+            statusBarBgColor = '#ffc107';
             currentStatusText = 'Auto-Action ist inaktiv.';
-            // Der Tab-Titel bleibt hier original, da keine besondere Statusinfo benötigt wird
         }
 
-
-        // Update Tab Title
         document.title = currentTabTitle;
 
-        // Update Status Bar
         if (statusBarRef) {
             statusBarRef.text(currentStatusText);
             statusBarRef.css({
                 'background-color': statusBarBgColor,
-                'color': '#ffffff' // Feste weiße Schrift für die Statusleiste
+                'color': '#ffffff'
             });
         }
     }
 
     function addAmFarmSettingsButton() {
-        if (typeof game_data === 'undefined' || game_data.screen !== 'am_farm') {
+        // Sicherstellen, dass wir auf der Farm-Seite sind und jQuery geladen ist
+        if (typeof game_data === 'undefined' || game_data.screen !== 'am_farm' || typeof $ === 'undefined') {
+            console.log("TW Auto-Action: Nicht auf Farm-Seite oder jQuery nicht geladen.");
             return;
         }
 
-        // Versuche, den Einfügepunkt zu finden: die erste Überschrift im content_value div
-        const targetHeading = $('#content_value').find('h3:contains("Farm-Assistent"), h2:contains("Account Manager"), h4.screen-title:contains("Account-Manager")').first();
+        // Versuche, einen flexibleren Einfügepunkt zu finden:
+        // Div mit id 'content_value', dann nach einer Überschrift oder einem div mit class 'box-item'
+        // Das ist robuster, falls sich die exakten Überschriftstexte ändern.
+        let targetElement = $('#content_value').find('h3, h2, h4.screen-title, div.box-item').first();
 
-        if (targetHeading.length === 0) {
-            console.warn("TW Auto-Action: Konnte keine passende Überschrift für 'Account-Manager' finden, um Buttons einzufügen. Buttons werden nicht angezeigt.");
-            return;
+        // Fallback: Wenn kein passendes Element gefunden wird, versuchen Sie, es direkt an content_value anzuhängen
+        if (targetElement.length === 0) {
+            targetElement = $('#content_value');
+            if (targetElement.length === 0) {
+                console.warn("TW Auto-Action: Konnte keinen geeigneten Einfügepunkt für Buttons finden. Buttons werden nicht angezeigt.");
+                return;
+            }
         }
 
-        // Grundlegende Styles für alle Buttons (keine feste Positionierung mehr)
         const buttonBaseStyle = `
             white-space: nowrap;
             display: inline-block;
@@ -694,17 +672,14 @@
             cursor: pointer;
             font-weight: bold;
             border-radius: 3px;
-            color: #FFFFFF; /* HIER AUF WEISS GEÄNDERT */
-            background-color: #f0e2b6; /* Feste neutrale Hintergrundfarbe */
-            border: 1px solid #804000; /* Feste neutrale Rahmenfarbe */
+            color: #FFFFFF; /* Textfarbe ist weiß */
+            background-color: #f0e2b6;
+            border: 1px solid #804000;
         `;
 
-        // HTML für die Buttons (Reihenfolge hier ist wichtig für flexbox justify-content: flex-start)
-        // Visuell: Start/Stopp (links) -- Einstellungen (rechts)
         const toggleButtonHtml = `<a href="#" id="tw_auto_action_toggle_button" class="btn" style="${buttonBaseStyle}">Auto-Action Start/Stopp</a>`;
         const settingsButtonHtml = `<a href="#" id="tw_auto_action_settings_button" class="btn" style="${buttonBaseStyle}">Auto-Action Einstellungen</a>`;
 
-        // Statusleiste HTML - JETZT ALS NORMALES FLEX-ITEM, OHNE ABSOLUTE POSITIONIERUNG
         const statusBarHtml = `
             <div id="tw_auto_action_status_bar" style="
                 background-color: rgba(0,0,0,0.7);
@@ -716,35 +691,35 @@
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                box-sizing: border-box; /* Wichtig für korrekte Breitenberechnung mit Padding/Border */
-                flex-grow: 1; /* Lässt die Statusleiste den restlichen Platz ausfüllen */
-                min-width: 50px; /* Verhindert zu starkes Schrumpfen */
+                box-sizing: border-box;
+                flex-grow: 1;
+                min-width: 50px;
             ">
                 TW Auto-Action ist bereit.
             </div>
         `;
 
-        // Haupt-Container für Buttons und Statusleiste
-        // buttons_row enthält nun alle Elemente nebeneinander
         const mainContainerHtml = `
             <div id="tw_auto_action_main_container" style="margin-bottom: 15px; margin-top: 5px; width: 100%; box-sizing: border-box;">
                 <div id="tw_auto_action_buttons_row" style="display: flex; justify-content: flex-start; gap: 10px; align-items: center; margin-bottom: 10px;">
                     ${toggleButtonHtml}
                     ${settingsButtonHtml}
-                    ${statusBarHtml} </div>
+                    ${statusBarHtml}
+                </div>
             </div>
         `;
 
-        // Gesamten Container vor der gefundenen Überschrift einfügen
-        mainContainerRef = $(mainContainerHtml);
-        targetHeading.before(mainContainerRef);
+        // Einfügen des Containers
+        targetElement.before(mainContainerHtml); // Versuche vor dem Ziel einzufügen
+        // Eine Alternative wäre targetElement.append() oder .prepend(), je nachdem, wo es am besten aussieht.
+        // Für Überschriften ist .before() oft besser, für allgemeine divs .prepend() oder .append()
 
-        // Referenzen zu den eingefügten Elementen holen
+        // Referenzen holen
+        mainContainerRef = $('#tw_auto_action_main_container');
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
         statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
 
-        // Event-Listener zuweisen
         if (settingsButtonRef.length > 0) {
             settingsButtonRef.on('click', (e) => {
                 e.preventDefault();
@@ -759,19 +734,26 @@
             });
         }
 
-        updateUIStatus(); // Initiales Update des Status für alle Elemente
+        updateUIStatus();
     }
 
     // --- Skript-Initialisierung ---
     loadSettings();
 
-    $(document).ready(function() {
-        addAmFarmSettingsButton();
+    // jQuery bereit? Falls nicht, warte und versuche es erneut
+    function initializeScript() {
+        if (typeof $ === 'undefined') {
+            console.log('TW Auto-Action: jQuery noch nicht geladen, warte 100ms...');
+            setTimeout(initializeScript, 100);
+            return;
+        }
 
-        // Zeige die initiale "Bereit"-Nachricht nur einmal an
-        if (!initialReadyMessageShown) {
-            setTimeout(() => {
-                if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+        // Führe den Rest der Initialisierung nur aus, wenn jQuery bereit ist
+        $(document).ready(function() {
+            addAmFarmSettingsButton();
+
+            if (!initialReadyMessageShown && typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                setTimeout(() => {
                     let hotkeyDisplay = currentSettings.toggleKeyChar;
                     if (currentSettings.requiredCtrl) hotkeyDisplay = 'Strg + ' + hotkeyDisplay;
                     if (currentSettings.requiredAlt) hotkeyDisplay = 'Alt + ' + hotkeyDisplay;
@@ -779,72 +761,68 @@
                     hotkeyDisplay = hotkeyDisplay.replace(/\s\+\s$/, '');
 
                     UI.InfoMessage('TW Auto-Action (v' + SCRIPT_VERSION + ') ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über den "Start/Stopp"-Button.', 3000);
-                }
-                initialReadyMessageShown = true;
-            }, 1000);
-        }
+                    initialReadyMessageShown = true;
+                }, 1000);
+            }
 
+            const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] };
 
-        const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] };
+            const observer = new MutationObserver((mutationsList, observer) => {
+                if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || !initialReadyMessageShown) {
+                    const relevantChange = mutationsList.some(mutation =>
+                        mutation.type === 'childList' ||
+                        (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class'))
+                    );
 
-        const observer = new MutationObserver((mutationsList, observer) => {
-            // Nur aktualisieren, wenn potenziell relevante Änderungen passieren und das Skript aktiv oder in einem speziellen Zustand ist
-            if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || !initialReadyMessageShown) { // Auch aktualisieren, wenn die Initialnachricht noch nicht gezeigt wurde (also der Startzustand)
-                const relevantChange = mutationsList.some(mutation =>
-                    mutation.type === 'childList' ||
-                    (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class'))
-                );
+                    if (relevantChange) {
+                        const botProtectionFound = checkAntiBotProtection();
 
-                if (relevantChange) {
-                    // Überprüfe Botschutz, da dies den Skriptstatus ändern kann
-                    const botProtectionFound = checkAntiBotProtection();
-
-                    if (!botProtectionFound && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
-                        // Überprüfe Farm-Buttons nur, wenn kein Botschutz aktiv ist und auf der Farm-Seite
-                        const farmButton = $(FARM_BUTTON_SELECTOR).first();
-                        if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
-                            if (autoActionActive) {
-                                clearInterval(autoActionIntervalId);
-                                autoActionIntervalId = null;
-                                autoActionActive = false;
-                                if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
-                                    UI.InfoMessage('Keine Farm-Buttons mehr gefunden/sichtbar. Auto-Action gestoppt!', 3000);
+                        if (!botProtectionFound && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
+                            const farmButton = $(FARM_BUTTON_SELECTOR).first();
+                            if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
+                                if (autoActionActive) {
+                                    clearInterval(autoActionIntervalId);
+                                    autoActionIntervalId = null;
+                                    autoActionActive = false;
+                                    if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                                        UI.InfoMessage('Keine Farm-Buttons mehr gefunden/sichtbar. Auto-Action gestoppt!', 3000);
+                                    }
+                                }
+                                if (!noFarmButtonsDetected) {
+                                    noFarmButtonsDetected = true;
+                                    updateUIStatus();
+                                }
+                            } else {
+                                if (noFarmButtonsDetected) {
+                                    noFarmButtonsDetected = false;
+                                    updateUIStatus();
                                 }
                             }
-                            if (!noFarmButtonsDetected) {
-                                noFarmButtonsDetected = true;
-                                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
-                            }
-                        } else {
-                            if (noFarmButtonsDetected) {
+                        } else if (!botProtectionFound) {
+                            if (noFarmButtonsDetected || botProtectionDetected) {
                                 noFarmButtonsDetected = false;
-                                updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
+                                botProtectionDetected = false;
+                                updateUIStatus();
                             }
-                        }
-                    } else if (!botProtectionFound) {
-                        // Wenn der Botschutz nicht gefunden wurde und das Skript nicht auf der Farm-Seite ist,
-                        // und keine Buttons erkannt wurden, stellen Sie sicher, dass diese Zustände zurückgesetzt werden.
-                        if (noFarmButtonsDetected || botProtectionDetected) {
-                            noFarmButtonsDetected = false;
-                            botProtectionDetected = false;
-                            updateUIStatus(); // Aktualisiert auch den Tab-Titel und Buttons
                         }
                     }
                 }
+            });
+
+            observer.observe(document.body, observerConfig);
+
+            checkAntiBotProtection();
+            if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
+                const farmButton = $(FARM_BUTTON_SELECTOR).first();
+                if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
+                    noFarmButtonsDetected = true;
+                }
             }
+            updateUIStatus();
         });
+    }
 
-        observer.observe(document.body, observerConfig);
-
-        // Initialprüfung beim Laden der Seite
-        checkAntiBotProtection();
-        if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
-            const farmButton = $(FARM_BUTTON_SELECTOR).first();
-            if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
-                noFarmButtonsDetected = true;
-            }
-        }
-        updateUIStatus(); // Stellt sicher, dass der Titel initial korrekt gesetzt wird und die Buttons den korrekten Zustand haben
-    });
+    // Starte die Initialisierung
+    initializeScript();
 
 })();
