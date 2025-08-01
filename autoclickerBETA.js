@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.5 // Version auf 3.9.5 aktualisiert
+// @version      3.9.6 // Version auf 3.9.6 aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,13 +17,16 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.5'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.6'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.6 (2025-08-01):
+    - Anpassung: Die Anzeige der "geschätzten Gesamtrestzeit" wurde auf das kompaktere Format "Xxm:XXs" geändert. Bei Stunden wird weiterhin "Xxh Xxm:XXs" angezeigt.`,
+
         `v3.9.5 (2025-08-01):
     - FIX: Das Skript klickt jetzt wieder zuverlässig die Farm-Buttons. Ein Fehler in der Intervall-Neustart-Logik wurde behoben.`,
 
@@ -288,6 +291,7 @@
             'div#tooltip:contains("Bot-Schutz")',
             '#bot_protect_dialog',
             '.popup_box_container:contains("Sicherheitsabfrage")',
+            '#content_value:contains("Sicherheitsabfrage")', // Added this for broader detection
             '.popup_box_container:contains("Bot-Schutz")',
             'div[data-bot-check="true"]',
             'img[src*="captcha"]',
@@ -770,10 +774,13 @@
                     const minutes = Math.floor((totalSecondsEstimate % 3600) / 60);
                     const seconds = totalSecondsEstimate % 60;
 
+                    let formattedMinutes = minutes.toString().padStart(2, '0');
+                    let formattedSeconds = seconds.toString().padStart(2, '0');
+
                     if (hours > 0) {
-                        totalFarmsRemainingTimeText = ` | Rest: ${hours}h ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}m`;
+                        totalFarmsRemainingTimeText = ` | Rest: ${hours}h ${formattedMinutes}m:${formattedSeconds}s`;
                     } else {
-                        totalFarmsRemainingTimeText = ` | Rest: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}m`;
+                        totalFarmsRemainingTimeText = ` | Rest: ${minutes}m:${formattedSeconds}s`; // Changed to Xxm:XXs
                     }
                 }
             }
