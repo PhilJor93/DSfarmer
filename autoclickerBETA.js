@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.4 // Version auf 3.9.4 aktualisiert
+// @version      3.9.5 // Version auf 3.9.5 aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,13 +17,16 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.4'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.5'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.5 (2025-08-01):
+    - FIX: Das Skript klickt jetzt wieder zuverlässig die Farm-Buttons. Ein Fehler in der Intervall-Neustart-Logik wurde behoben.`,
+
         `v3.9.4 (2025-08-01):
     - Anpassung: Die Anzeige der "Restzeit bis zum nächsten Klick" in der Statusleiste und im Tab-Titel wurde entfernt, um die Übersichtlichkeit zu verbessern.`,
 
@@ -336,6 +339,10 @@
 
     // --- Funktion zum Simulieren des Button-Klicks ---
     function simulateButtonClick() {
+        if (!autoActionActive) {
+            return; // Beende, wenn Skript nicht aktiv ist (Sicherheitscheck)
+        }
+
         if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
             if (checkAntiBotProtection()) {
                 return;
@@ -359,7 +366,7 @@
             } else {
                 if (!noFarmButtonsDetected) {
                     noFarmButtonsDetected = true;
-                    if (autoActionActive) {
+                    if (autoActionActive) { // Stoppe nur, wenn es wirklich aktiv war
                         clearInterval(autoActionIntervalId);
                         autoActionIntervalId = null;
                         autoActionActive = false;
@@ -367,13 +374,14 @@
                             UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar. Auto-Action gestoppt!', 3000);
                         }
                         console.log('TW Auto-Action: Keine Farm-Buttons gefunden oder sichtbar. Skript gestoppt.');
-                    } else {
+                    } else { // Wenn es inaktiv war, aber keine Buttons gefunden werden, nur Meldung
                         if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                             UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
                         }
                     }
                     updateUIStatus();
                 }
+                return; // Wichtig: Hier aufhören, da kein Klick erfolgte und das Intervall neu gesetzt werden muss
             }
         } else {
             if (autoActionActive) {
@@ -387,6 +395,15 @@
                 botProtectionDetected = false;
                 updateUIStatus();
             }
+            return; // Wichtig: Hier aufhören, da kein Klick erfolgte und das Intervall neu gesetzt werden muss
+        }
+
+        // --- Nächsten Klick planen (nur wenn autoActionActive noch true ist) ---
+        if (autoActionActive) {
+            clearInterval(autoActionIntervalId); // Vorheriges Intervall löschen
+            const newInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
+            nextClickTime = Date.now() + newInterval; // Nächste Klickzeit für Folgeintervall setzen (intern)
+            autoActionIntervalId = setInterval(simulateButtonClick, newInterval);
         }
     }
 
@@ -441,17 +458,12 @@
             autoActionActive = true;
             if (autoActionIntervalId) clearInterval(autoActionIntervalId);
 
+            // Initialen Klick auslösen und dann das Intervall für die folgenden Klicks starten
             const initialInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
             nextClickTime = Date.now() + initialInterval; // Nächste Klickzeit setzen (intern)
-            autoActionIntervalId = setInterval(() => {
-                simulateButtonClick();
-                clearInterval(autoActionIntervalId); // Vorheriges Intervall löschen
-                if (autoActionActive) {
-                    const newInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
-                    nextClickTime = Date.now() + newInterval; // Nächste Klickzeit für Folgeintervall setzen (intern)
-                    autoActionIntervalId = setInterval(simulateButtonClick, newInterval);
-                }
-            }, initialInterval);
+
+            // Führe den ersten Klick nach dem initialen Intervall aus
+            autoActionIntervalId = setInterval(simulateButtonClick, initialInterval);
 
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 let hotkeyDisplay = currentSettings.toggleKeyChar;
