@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.5-BETA // Version auf 3.9.5-BETA aktualisiert
+// @version      3.9 // Offizielle Version 3.9
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,36 +17,17 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.5-BETA'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9'; // Die aktuelle Version des Skripts (Offizielles Release)
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge (die vollständige Historie) ---
     const ALL_CHANGELOG_ENTRIES = [
-        `v3.9.5-BETA (2025-08-01):
-    - ANPASSUNG: Die Anzeige der "Laufzeit" wurde aus der Haupt-Statusleiste entfernt. Die Statusleiste konzentriert sich nun ausschließlich auf die **FpM** und die **Restlaufzeit** der Farmen.`,
-
-        `v3.9.4-BETA (2025-08-01):
-    - ANPASSUNG: Das separate Feld für "FpM" und "Laufzeit" links vom Start/Stopp-Button wurde entfernt. Diese Informationen werden nun direkt und kompakter in die Haupt-Statusleiste integriert, wenn die Auto-Action aktiv ist.`,
-
-        `v3.9.3-BETA (2025-08-01):
-    - NEU: Berechnung eines **Mittelwerts der FpM** aus der skript-eigenen Schätzung und der vom Spiel gemeldeten "Verifizierten FpM". Dieser durchschnittliche Wert wird nun für die Anzeige und die Restlaufzeitberechnung verwendet, um maximale Genauigkeit zu gewährleisten.
-    - ANPASSUNG: Die "Verifizierte FpM" Anzeige links vom Start/Stopp-Button zeigt nun den gemittelten Wert an.`,
-
-        `v3.9.2-BETA (2025-08-01):
-    - FIX: **Wichtige Korrektur der 'plan.counter' Erfassung.** Die tatsächlich gesendeten Farmen (für die "Verifizierte FpM") werden nun korrekt über '#FarmGodProgessbar'.data('current') statt data('max') ausgelesen. Dies behebt die Ungenauigkeit bei der FpM-Gegenprüfung.`,
-
-        `v3.9.1-BETA (2025-08-01):
-    - FIX: Korrektur der 'plan.counter' Erfassung. Die Anzahl der gesendeten Farmen wird nun direkt von der '#FarmGodProgessbar' (data('max')) ausgelesen, was robuster und genauer ist.
-    - VERBESSERUNG: Konsolen-Logs für die 'plan.counter'-Erfassung beim Start/Stopp wurden angepasst, um die verbesserte Methode widerzuspiegeln.`,
-
-        `v3.9.0-BETA (2025-08-01):
-    - BETA: Diese Version ist eine Testversion für zukünftige Verbesserungen.
-    - NEU: "Verifizierte FpM" Anzeige hinzugefügt, um die Genauigkeit der FpM-Berechnung zu überprüfen. Diese basiert auf der tatsächlichen Anzahl gesendeter Farmen (plan.counter) und der Skript-Laufzeit.
-    - NEU: Anzeige der **aktuellen Laufzeit** der Auto-Action im neuen Feld links vom Start/Stopp-Button.
-    - NEU: Konsolenprüfung für 'plan.counter' beim Start und Stopp der Auto-Action für detaillierte FpM-Gegenprüfung.`,
-
+        `v3.9 (2025-08-01):
+    - NEU: Die **Restlaufzeit-Anzeige** der Farms wurde komplett überarbeitet und ist jetzt wieder verfügbar. 
+    - VERBESSERUNG: Die Messung der **Farms pro Minute (FpM)** ist durch eine neue Logik deutlich genauer geworden.
+    
         `v3.8.0 (2025-08-01):
     - FIX: Behebung eines Fehlers, der dazu führte, dass das Skript manchmal nach dem ersten Klick nicht mehr korrekt das Intervall neu startete. Dies stellt die zuverlässige Fortsetzung der Klicks sicher.
     - REINIGUNG: Entfernung alter, nicht mehr benötigter Variablen und Konsolen-Logs.`,
@@ -714,7 +695,7 @@
             }
 
             let newMinInterval = parseInt($('#setting_min_interval').val(), 10);
-            let newMaxInterval = parseInt($('#setting_max_interval').val(), 10);
+            let newMaxInterval = parseInt($('#setting_max_interval', 10));
 
             if (isNaN(newMinInterval) || newMinInterval < 50) newMinInterval = 50;
             if (isNaN(newMaxInterval) || newMaxInterval < newMinInterval) newMaxInterval = newMinInterval + 100;
@@ -754,7 +735,7 @@
 
         $('#tw_auto_action_preview_sound').on('click', (e) => {
             e.preventDefault();
-            playSelectedSoundPreview();
+            playActivationTestTone(); // Hier wird der Test-Ton gespielt
         });
 
         $('#tw_auto_action_show_changelog').on('click', (e) => {
@@ -907,13 +888,6 @@
                 }
             }
         }
-
-        // --- Laufzeit-Anzeige ist hier explizit entfernt worden ---
-        // let currentDurationText = '';
-        // if (autoActionActive && autoActionStartTime > 0) {
-        //     const currentDuration = Date.now() - autoActionStartTime;
-        //     currentDurationText = ` | LZ: ${formatDuration(currentDuration)}`;
-        // }
 
 
         const defaultButtonBg = '#f0e2b6';
