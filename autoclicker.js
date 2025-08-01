@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.6.1 // Version auf 3.6.1 aktualisiert - Changelog verkürzt
+// @version       3.7.0 // Version auf 3.7.0 aktualisiert - Changelog-Button
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min Anzeige und Changelog.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,14 +17,17 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.6.1'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.7.0'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
-    // --- Changelog Definition (nur aktuelle und vorherige Version) ---
-    const CHANGELOG = `
+    // --- Vollständiges Changelog Definition ---
+    const FULL_CHANGELOG = `
     --- Changelog TW Auto-Action ---
+
+    v3.7.0 (2025-08-01):
+    - NEU: "Changelog anzeigen"-Button im Einstellungsdialog für manuelles Einsehen.
 
     v3.6.1 (2025-08-01):
     - Anzeige des Changelogs im Alert auf die aktuelle und letzte Version gekürzt.
@@ -32,7 +35,48 @@
     v3.6.0 (2025-08-01):
     - NEU: Changelog-Anzeige beim ersten Laden einer neuen Version.
     - Kleinere interne Optimierungen.
+
+    v3.5.0 (2025-07-31):
+    - NEU: Anzeige der "Farms pro Minute" in der Statusleiste.
+    - Verbesserte Logik für die Farms/Min-Berechnung.
+
+    v3.4.3 (2025-07-30):
+    - FIX: Start-Ton respektiert nun die Einstellung "Botschutz-Ton abspielen".
+
+    v3.4.2 (2025-07-29):
+    - FIX: Verbesserte Botschutz-Erkennung für mehr Szenarien.
+    - Verbesserte Stabilität beim Starten/Stoppen des Skripts.
+
+    v3.4.1 (2025-07-28):
+    - FIX: Fehlerbehebung bei der Erkennung von Farm-Buttons auf bestimmten Seitenlayouts.
+
+    v3.4.0 (2025-07-27):
+    - NEU: Einstellungsdialog für Hotkey, Intervalle, Botschutz-Verhalten und Sound.
+    - NEU: Sound-Benachrichtigung bei Botschutz-Erkennung (konfigurierbar).
+    - NEU: Globale Funktion window.toggleTribalAutoAction() zur externen Steuerung.
+    - Überarbeitung der UI-Elemente für bessere Integration.
+
+    v3.3.0 (2025-07-26):
+    - NEU: Hotkey-Unterstützung (Standard: Shift+Strg+E) zum Starten/Stoppen.
+    - Zufälliges Intervall für Klicks hinzugefügt.
+    - Erkennung von Botschutz-Abfragen und automatische Pause.
+    - Statusanzeige im Tab-Titel.
+
+    v3.2.0 (2025-07-25):
+    - Erste Version mit grundlegender Auto-Klick-Funktionalität für Farm-Buttons.
     `;
+
+    // --- Verkürztes Changelog für einmaliges Pop-up ---
+    const SHORT_CHANGELOG = `
+    --- Changelog TW Auto-Action ---
+
+    v${SCRIPT_VERSION} (2025-08-01):
+    - NEU: "Changelog anzeigen"-Button im Einstellungsdialog für manuelles Einsehen.
+
+    v3.6.1 (2025-08-01):
+    - Anzeige des Changelogs im Alert auf die aktuelle und letzte Version gekürzt.
+    `;
+
 
     // --- Sound-Profile Definitionen ---
     const soundProfiles = {
@@ -409,6 +453,7 @@
 
         const dialogContentHtml = `
             <div id="tw_auto_action_settings_dialog_content" style="padding: 15px; background-color: #f7f3e6; border: 1px solid #804000; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.5); max-width: 400px; margin: 20px; position: relative;">
+                <button id="tw_auto_action_show_changelog" class="btn" style="position: absolute; top: 10px; right: 10px; padding: 5px 10px; font-size: 10px; border: 1px solid #804000; background-color: #d1b790; color: #FFFFFF;">Changelog</button>
                 <h3>Auto-Action Einstellungen (v${SCRIPT_VERSION})</h3>
                 <style>
                     #tw_auto_action_settings_dialog_content table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -571,6 +616,11 @@
         $('#tw_auto_action_preview_sound').on('click', (e) => {
             e.preventDefault();
             playSelectedSoundPreview();
+        });
+
+        $('#tw_auto_action_show_changelog').on('click', (e) => {
+            e.preventDefault();
+            alert(FULL_CHANGELOG.trim());
         });
     }
 
@@ -762,7 +812,7 @@
 
         if (lastSeenVersion !== SCRIPT_VERSION) {
             // Version ist neu oder wurde noch nie gesehen
-            alert(CHANGELOG.trim());
+            alert(SHORT_CHANGELOG.trim()); // Hier das kurze Changelog anzeigen
             localStorage.setItem('tw_auto_action_last_seen_version', SCRIPT_VERSION);
         }
     }
