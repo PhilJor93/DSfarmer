@@ -25,9 +25,9 @@
     // --- Alle Changelog-Einträge (die vollständige Historie) ---
     const ALL_CHANGELOG_ENTRIES = [
         `v3.9 (2025-08-01):
-    - NEU: Die **Restlaufzeit-Anzeige** der Farms wurde komplett überarbeitet und ist jetzt wieder verfügbar. 
-    - VERBESSERUNG: Die Messung der **Farms pro Minute (FpM)** ist durch eine neue Logik deutlich genauer geworden.
-    
+    - NEU: Die **Restlaufzeit-Anzeige** der Farms wurde komplett überarbeitet und ist jetzt wieder verfügbar.
+    - VERBESSERUNG: Die Messung der **Farms pro Minute (FpM)** ist durch eine neue Logik deutlich genauer geworden.`,
+
         `v3.8.0 (2025-08-01):
     - FIX: Behebung eines Fehlers, der dazu führte, dass das Skript manchmal nach dem ersten Klick nicht mehr korrekt das Intervall neu startete. Dies stellt die zuverlässige Fortsetzung der Klicks sicher.
     - REINIGUNG: Entfernung alter, nicht mehr benötigter Variablen und Konsolen-Logs.`,
@@ -518,7 +518,7 @@
                 if (currentSettings.requiredShift) hotkeyDisplay = 'Shift + ' + hotkeyDisplay;
                 hotkeyDisplay = hotkeyDisplay.replace(/\s\+\s$/, '');
 
-                UI.InfoMessage('Auto-Action gestartet! (Hotkey: ' + hotkeyDisplay + ' zum Stoppen)', 3000);
+                UI.InfoMessage('TW Auto-Action (v' + SCRIPT_VERSION + ') ist bereit. Starte per Hotkey: ' + hotkeyDisplay + ' oder über den "Start/Stopp"-Button.', 3000);
             }
             noFarmButtonsDetected = false;
         }
