@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name          TW Auto-Action (Hotkey & Externe Trigger)
-// @namespace     TribalWars
-// @version       3.7.2 // Version auf 3.7.2 aktualisiert - Changelog-Button Position und Größe
-// @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min Anzeige und Changelog.
-// @author        Idee PhilJor93 Generiert mit Google Gemini-KI
-// @match         https://*.die-staemme.de/game.php?*
-// @grant         none
+// @name         TW Auto-Action (Hotkey & Externe Trigger)
+// @namespace    TribalWars
+// @version      3.8.0 // Version auf 3.8.0 aktualisiert
+// @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
+// @author       Idee PhilJor93 Generiert mit Google Gemini-KI
+// @match        https://*.die-staemme.de/game.php?*
+// @grant        none
 // ==/UserScript==
 
 (function() {
@@ -17,13 +17,17 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.7.2'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.8.0'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
-    // --- Alle Changelog-Einträge ---
+    // --- Alle Changelog-Einträge (die vollständige Historie) ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.8.0 (2025-08-01):
+    - FIX: Behebung eines Fehlers, der dazu führte, dass das Skript manchmal nach dem ersten Klick nicht mehr korrekt das Intervall neu startete. Dies stellt die zuverlässige Fortsetzung der Klicks sicher.
+    - REINIGUNG: Entfernung alter, nicht mehr benötigter Variablen und Konsolen-Logs.`, // Nur die wirklich neuen/relevanten Änderungen hier
+
         `v3.7.2 (2025-08-01):
     - Changelog-Button im Einstellungsdialog verkleinert und direkt neben der Version platziert.`,
 
@@ -64,7 +68,8 @@
     - NEU: Hotkey-Unterstützung (Standard: Shift+Strg+E) zum Starten/Stoppen.
     - Zufälliges Intervall für Klicks hinzugefügt.
     - Erkennung von Botschutz-Abfragen und automatische Pause.
-    - Statusanzeige im Tab-Titel.`
+    - Statusanzeige im Tab-Titel.
+    - Anzeige der geschätzten Gesamtrestzeit zum Abarbeiten aller Farmen.`
     ];
 
     // --- Generiere das Changelog für den Alert (erste 2 Versionen) ---
@@ -152,10 +157,15 @@
     let botProtectionDetected = false;
     let noFarmButtonsDetected = false;
     let initialReadyMessageShown = false; // Flag für die initiale Nachricht
+    // nextClickTime wird nicht mehr direkt für die Anzeige genutzt, aber intern für das Intervall benötigt
+    let nextClickTime = 0;
 
     // *** Variablen für Farms/Minute ***
     const clickTimestamps = []; // Speichert Zeitstempel der letzten Klicks
     const MAX_TIMESTAMPS = 60; // Anzahl der Zeitstempel, die wir speichern, um die Rate zu berechnen (letzte Minute)
+    let calculatedFarmsPerMinute = 0; // Speichert den zuletzt berechneten FpM-Wert
+    let lastFpMCalculationTime = 0; // Zeitstempel der letzten FpM-Berechnung
+    const FPM_UPDATE_INTERVAL_MS = 5000; // FpM alle 5 Sekunden aktualisieren
 
     // --- Hilfsfunktion zum Generieren eines zufälligen Intervalls ---
     function getRandomInterval(min, max) {
@@ -261,6 +271,7 @@
             'div#tooltip:contains("Bot-Schutz")',
             '#bot_protect_dialog',
             '.popup_box_container:contains("Sicherheitsabfrage")',
+            '#content_value:contains("Sicherheitsabfrage")',
             '.popup_box_container:contains("Bot-Schutz")',
             'div[data-bot-check="true"]',
             'img[src*="captcha"]',
@@ -312,6 +323,10 @@
 
     // --- Funktion zum Simulieren des Button-Klicks ---
     function simulateButtonClick() {
+        if (!autoActionActive) {
+            return; // Beende, wenn Skript nicht aktiv ist (Sicherheitscheck)
+        }
+
         if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
             if (checkAntiBotProtection()) {
                 return;
@@ -331,11 +346,11 @@
                     noFarmButtonsDetected = false;
                 }
                 farmButton.trigger('click');
-                updateUIStatus(); // UI nach jedem Klick aktualisieren für aktuelle Farms/Min
+                // UI wird durch das setInterval(updateUIStatus, 500) aktualisiert
             } else {
                 if (!noFarmButtonsDetected) {
                     noFarmButtonsDetected = true;
-                    if (autoActionActive) {
+                    if (autoActionActive) { // Stoppe nur, wenn es wirklich aktiv war
                         clearInterval(autoActionIntervalId);
                         autoActionIntervalId = null;
                         autoActionActive = false;
@@ -343,13 +358,14 @@
                             UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar. Auto-Action gestoppt!', 3000);
                         }
                         console.log('TW Auto-Action: Keine Farm-Buttons gefunden oder sichtbar. Skript gestoppt.');
-                    } else {
-                           if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
-                               UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
-                           }
+                    } else { // Wenn es inaktiv war, aber keine Buttons gefunden werden, nur Meldung
+                        if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                            UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar.', 3000);
+                        }
                     }
                     updateUIStatus();
                 }
+                return; // Wichtig: Hier aufhören, da kein Klick erfolgte und das Intervall neu gesetzt werden muss
             }
         } else {
             if (autoActionActive) {
@@ -363,6 +379,15 @@
                 botProtectionDetected = false;
                 updateUIStatus();
             }
+            return; // Wichtig: Hier aufhören, da kein Klick erfolgte und das Intervall neu gesetzt werden muss
+        }
+
+        // --- Nächsten Klick planen (nur wenn autoActionActive noch true ist) ---
+        if (autoActionActive) {
+            clearInterval(autoActionIntervalId); // Vorheriges Intervall löschen
+            const newInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
+            nextClickTime = Date.now() + newInterval; // Nächste Klickzeit für Folgeintervall setzen (intern)
+            autoActionIntervalId = setInterval(simulateButtonClick, newInterval);
         }
     }
 
@@ -388,6 +413,9 @@
             autoActionActive = false;
             // Klick-Historie zurücksetzen, wenn gestoppt wird
             clickTimestamps.length = 0;
+            nextClickTime = 0; // Nächste Klickzeit zurücksetzen (intern)
+            calculatedFarmsPerMinute = 0; // FpM zurücksetzen
+            lastFpMCalculationTime = 0; // FpM Zeitstempel zurücksetzen
 
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 UI.InfoMessage('Auto-Action gestoppt.', 2000);
@@ -414,14 +442,12 @@
             autoActionActive = true;
             if (autoActionIntervalId) clearInterval(autoActionIntervalId);
 
+            // Initialen Klick auslösen und dann das Intervall für die folgenden Klicks starten
             const initialInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
-            autoActionIntervalId = setInterval(() => {
-                simulateButtonClick();
-                clearInterval(autoActionIntervalId);
-                if (autoActionActive) {
-                    autoActionIntervalId = setInterval(simulateButtonClick, getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval));
-                }
-            }, initialInterval);
+            nextClickTime = Date.now() + initialInterval; // Nächste Klickzeit setzen (intern)
+
+            // Führe den ersten Klick nach dem initialen Intervall aus
+            autoActionIntervalId = setInterval(simulateButtonClick, initialInterval);
 
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 let hotkeyDisplay = currentSettings.toggleKeyChar;
@@ -434,7 +460,7 @@
             }
             noFarmButtonsDetected = false;
         }
-        updateUIStatus();
+        updateUIStatus(); // UI sofort aktualisieren nach Start/Stop
     };
 
     // --- PRÄZISER SELEKTOR FÜR BELIEBIGEN FARMGOD BUTTON ---
@@ -662,38 +688,83 @@
     let statusBarRef = null;
     let mainContainerRef = null;
 
-    function updateUIStatus() {
-        let currentTabTitle = originalDocumentTitle;
-        let statusText = 'TW Auto-Action ist bereit.';
-        let statusBarBgColor = '#ffc107'; // Standard: Gelb
-
-        // Farms/Min Berechnung
+    function updateFarmsPerMinuteCalculation() {
+        // Diese Funktion berechnet FpM und speichert sie in calculatedFarmsPerMinute
+        // Diese Funktion wird alle 5s aufgerufen, wenn aktiv
         let farmsPerMinute = 0;
-        if (autoActionActive && clickTimestamps.length > 1) {
+        if (clickTimestamps.length > 0) {
             const now = Date.now();
-            // Nur Zeitstempel innerhalb der letzten Minute berücksichtigen
             const recentClicks = clickTimestamps.filter(ts => (now - ts) <= 60000);
 
             if (recentClicks.length > 1) {
                 const oldestClickTime = recentClicks[0];
                 const timeSpanSeconds = (now - oldestClickTime) / 1000;
 
-                // Mindestens 5 Sekunden Daten, um eine vernünftige Rate zu haben
-                if (timeSpanSeconds >= 5) {
+                if (timeSpanSeconds >= 5) { // Mindestens 5 Sekunden Daten für genauere Rate
                     const clicksInTimeSpan = recentClicks.length;
                     farmsPerMinute = (clicksInTimeSpan / timeSpanSeconds) * 60;
-                } else {
-                    // Wenn noch nicht genügend Daten für 5 Sekunden, Rate basierend auf den vorhandenen Klicks in kurzer Zeit
-                    farmsPerMinute = (recentClicks.length / (currentSettings.minInterval / 1000)) * 60; // Grobe Schätzung basierend auf minInterval
+                } else if (recentClicks.length > 0) { // Wenn weniger als 5s Daten aber Klicks vorhanden
+                    // Schätzung basierend auf dem Durchschnitt des Intervalls
+                    const avgInterval = (currentSettings.minInterval + currentSettings.maxInterval) / 2;
+                    if (avgInterval > 0) {
+                        farmsPerMinute = (recentClicks.length / (avgInterval / 1000)) * 60;
+                    }
                 }
-            } else if (recentClicks.length === 1) {
-                // Wenn nur ein Klick, Rate schwer zu schätzen, warten auf mehr
-                farmsPerMinute = 0; // Oder eine sehr grobe Schätzung, z.B. 60 / (minInterval/1000)
+            } else if (recentClicks.length === 1 && autoActionActive) {
+                // Wenn nur ein Klick und aktiv, grobe Schätzung basierend auf dem Durchschnittsintervall
+                const avgInterval = (currentSettings.minInterval + currentSettings.maxInterval) / 2;
+                if (avgInterval > 0) {
+                    farmsPerMinute = (1 / (avgInterval / 1000)) * 60;
+                }
             }
         }
-        farmsPerMinute = Math.round(farmsPerMinute); // Auf ganze Zahl runden
+        calculatedFarmsPerMinute = Math.round(farmsPerMinute);
+        lastFpMCalculationTime = Date.now();
+    }
 
-        const farmsPerMinuteText = (autoActionActive && farmsPerMinute > 0) ? `(${farmsPerMinute} Farms/Min)` : '';
+
+    function updateUIStatus() {
+        let currentTabTitle = originalDocumentTitle;
+        let statusText = 'TW Auto-Action ist bereit.';
+        let statusBarBgColor = '#ffc107'; // Standard: Gelb
+
+        // FpM Berechnung nur, wenn genug Zeit seit letzter Berechnung vergangen ist oder wenn Skript gerade gestartet/gestoppt wurde
+        if (autoActionActive && (Date.now() - lastFpMCalculationTime >= FPM_UPDATE_INTERVAL_MS || lastFpMCalculationTime === 0)) {
+            updateFarmsPerMinuteCalculation();
+        } else if (!autoActionActive && calculatedFarmsPerMinute !== 0 && lastFpMCalculationTime !== 0) { // FpM auf 0 setzen, wenn Skript inaktiv wird
+             calculatedFarmsPerMinute = 0;
+             lastFpMCalculationTime = 0;
+        }
+
+
+        const farmsPerMinuteText = (autoActionActive && calculatedFarmsPerMinute > 0) ? `(${calculatedFarmsPerMinute} Farms/Min)` : '';
+
+        // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen (Immer aktuell berechnen, basierend auf dem gestabilisierten FpM)
+        let totalFarmsRemainingTimeText = '';
+        if (autoActionActive && calculatedFarmsPerMinute > 0 && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
+            const farmGodProgressbarMax = $('#FarmGodProgessbar').data('max');
+            const farmGodProgressbarVal = $('#FarmGodProgessbar').val();
+
+            if (farmGodProgressbarMax !== undefined && farmGodProgressbarVal !== undefined) {
+                const remainingFarms = farmGodProgressbarMax - farmGodProgressbarVal;
+                if (remainingFarms > 0) {
+                    const estimatedMinutesFloat = remainingFarms / calculatedFarmsPerMinute;
+                    const totalSecondsEstimate = Math.max(0, Math.round(estimatedMinutesFloat * 60));
+                    const hours = Math.floor(totalSecondsEstimate / 3600);
+                    const minutes = Math.floor((totalSecondsEstimate % 3600) / 60);
+                    const seconds = totalSecondsEstimate % 60;
+
+                    let formattedMinutes = minutes.toString().padStart(2, '0');
+                    let formattedSeconds = seconds.toString().padStart(2, '0');
+
+                    if (hours > 0) {
+                        totalFarmsRemainingTimeText = ` | Rest: ${hours}h ${minutes}m:${formattedSeconds}s`;
+                    } else {
+                        totalFarmsRemainingTimeText = ` | Rest: ${minutes}m:${formattedSeconds}s`;
+                    }
+                }
+            }
+        }
 
 
         const defaultButtonBg = '#f0e2b6';
@@ -720,8 +791,8 @@
             statusText = `[BOTSCHUTZ] Auto-Action pausiert! ${farmsPerMinuteText}`;
         } else if (autoActionActive) {
             statusBarBgColor = '#28a745'; // Grün
-            currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
-            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteText}`;
+            currentTabTitle = `[AKTIV] TW Auto-Action ${farmsPerMinuteText}${totalFarmsRemainingTimeText} | ${originalDocumentTitle}`;
+            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteText}${totalFarmsRemainingTimeText}`;
         } else if (noFarmButtonsDetected) {
             statusBarBgColor = '#ffc107'; // Gelb
             currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
@@ -759,7 +830,7 @@
         if (targetElement.length === 0) {
             targetElement = contentValue.find('h3').first();
             if (targetElement.length === 0) {
-                 targetElement = contentValue;
+                targetElement = contentValue;
             }
         }
 
@@ -876,16 +947,22 @@
                 }, 1000);
             }
 
-            const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] };
+            const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'value', 'data-max'] };
 
             const observer = new MutationObserver((mutationsList, observer) => {
-                // UI-Update nur triggern, wenn es aktiv ist oder sich etwas relevantes ändert (Botschutz/Buttons)
                 const relevantChange = mutationsList.some(mutation =>
                     mutation.type === 'childList' ||
                     (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class'))
                 );
 
-                if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || relevantChange) {
+                // Check FarmGod progressbar changes to update remaining time more actively
+                const farmGodProgressbarChanged = mutationsList.some(mutation =>
+                    $(mutation.target).is('#FarmGodProgessbar') || $(mutation.target).find('#FarmGodProgessbar').length > 0 ||
+                    (mutation.type === 'attributes' && mutation.target.id === 'FarmGodProgessbar' && (mutation.attributeName === 'value' || mutation.attributeName === 'data-max'))
+                );
+
+                // UI Status nur aktualisieren, wenn relevante Änderungen oder wenn das Skript aktiv ist
+                if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || relevantChange || farmGodProgressbarChanged) {
                     const botProtectionFound = checkAntiBotProtection();
 
                     if (!botProtectionFound && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
@@ -921,6 +998,9 @@
 
             observer.observe(document.body, observerConfig);
 
+            // Interval für regelmäßige UI-Updates
+            setInterval(updateUIStatus, 500); // UI alle 500ms aktualisieren
+
             // Initialen Status setzen
             checkAntiBotProtection();
             if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
@@ -929,7 +1009,11 @@
                     noFarmButtonsDetected = true;
                 }
             }
-            updateUIStatus();
+            // FpM initial berechnen, wenn das Skript startet und Farmen verfügbar sind
+            if (autoActionActive) {
+                updateFarmsPerMinuteCalculation(); // Beim Start initial einmal berechnen
+            }
+            updateUIStatus(); // Initialen Status setzen, bevor Intervalle laufen
         });
     }
 
