@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.0-BETA // Version auf 3.9.0-BETA aktualisiert
+// @version      3.9.2-BETA // Version auf 3.9.2-BETA aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,13 +17,20 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.0-BETA'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.2-BETA'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge (die vollständige Historie) ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.2-BETA (2025-08-01):
+    - FIX: **Wichtige Korrektur der 'plan.counter' Erfassung.** Die tatsächlich gesendeten Farmen (für die "Verifizierte FpM") werden nun korrekt über '#FarmGodProgessbar'.data('current') statt data('max') ausgelesen. Dies behebt die Ungenauigkeit bei der FpM-Gegenprüfung.`,
+
+        `v3.9.1-BETA (2025-08-01):
+    - FIX: Korrektur der 'plan.counter' Erfassung. Die Anzahl der gesendeten Farmen wird nun direkt von der '#FarmGodProgessbar' (data('max')) ausgelesen, was eine robustere und genauere Erfassung gewährleistet.
+    - VERBESSERUNG: Konsolen-Logs für die 'plan.counter'-Erfassung beim Start/Stopp wurden angepasst, um die verbesserte Methode widerzuspiegeln.`,
+
         `v3.9.0-BETA (2025-08-01):
     - BETA: Diese Version ist eine Testversion für zukünftige Verbesserungen.
     - NEU: "Verifizierte FpM" Anzeige hinzugefügt, um die Genauigkeit der FpM-Berechnung zu überprüfen. Diese basiert auf der tatsächlichen Anzahl gesendeter Farmen (plan.counter) und der Skript-Laufzeit.
@@ -172,10 +179,10 @@
     let lastFpMCalculationTime = 0; // Zeitstempel der letzten FpM-Berechnung
     const FPM_UPDATE_INTERVAL_MS = 5000; // FpM alle 5 Sekunden aktualisieren
 
-    // --- NEUE Variablen für verifizierte FpM & Laufzeit ---
-    let farmGodInitialCounter = 0; // Startwert von plan.counter
+    // --- Variablen für verifizierte FpM & Laufzeit ---
+    let farmGodInitialCounter = 0; // Startwert der aktuell gesendeten Farmen (von FarmGodProgessbar.data('current'))
     let autoActionStartTime = 0;   // Startzeitpunkt der Auto-Action
-    let verifiedFarmsPerMinute = 0; // Berechnete FpM aus plan.counter
+    let verifiedFarmsPerMinute = 0; // Berechnete FpM aus dem data('current') Wert
     const VERIFIED_FPM_UPDATE_INTERVAL_MS = 10000; // Verifizierte FpM alle 10 Sekunden aktualisieren
 
     // --- Hilfsfunktion zum Generieren eines zufälligen Intervalls ---
@@ -419,6 +426,16 @@
         }
     });
 
+    // --- Funktion zum Abrufen des aktuellen FarmGod Zählers aus der FarmGodProgressBar ---
+    function getFarmGodCurrentCountFromUI() {
+        const progressBar = $('#FarmGodProgessbar');
+        // Sicherstellen, dass die Progressbar existiert und der data('current') Wert gesetzt ist
+        if (progressBar.length > 0 && progressBar.data('current') !== undefined) {
+            return parseInt(progressBar.data('current'), 10);
+        }
+        return 0; // Rückgabe 0, wenn nicht gefunden oder Wert ungültig
+    }
+
     // --- Globale Toggle Funktion für Auto-Action ---
     window.toggleTribalAutoAction = function() {
         if (autoActionActive) {
@@ -432,16 +449,16 @@
             lastFpMCalculationTime = 0;
 
             // Für die Konsolenprüfung beim Stoppen
-            const finalCounter = (typeof plan !== 'undefined' && typeof plan.counter === 'number') ? plan.counter : 'N/A';
+            const finalCounter = getFarmGodCurrentCountFromUI();
             const durationMs = Date.now() - autoActionStartTime;
-            const farmsSentFinal = (typeof plan !== 'undefined' && typeof plan.counter === 'number' && farmGodInitialCounter !== 0) ? (plan.counter - farmGodInitialCounter) : 0;
+            const farmsSentFinal = (finalCounter >= farmGodInitialCounter) ? (finalCounter - farmGodInitialCounter) : 0; // Sicherstellen, dass es nicht negativ ist
             const verifiedFpMOnStop = (farmsSentFinal > 0 && durationMs > 0) ? Math.round((farmsSentFinal / (durationMs / 1000)) * 60) : 0;
 
             console.groupCollapsed('TW Auto-Action Stopp-Details (v' + SCRIPT_VERSION + ')');
             console.log('--- Stopp ---');
-            console.log('Initialer plan.counter:', farmGodInitialCounter === 0 ? 'Nicht erfasst/0' : farmGodInitialCounter);
-            console.log('End-plan.counter:', finalCounter);
-            console.log('Gesendete Farmen (Differenz):', farmsSentFinal);
+            console.log('Initialer FarmGod Zähler (vom Start):', farmGodInitialCounter === 0 ? 'Nicht erfasst/0' : farmGodInitialCounter);
+            console.log('Aktueller FarmGod Zähler (Ende):', finalCounter);
+            console.log('Gesendete Farmen (Differenz während Laufzeit):', farmsSentFinal);
             console.log('Laufzeit:', formatDuration(durationMs));
             console.log('Verifizierte FpM beim Stopp:', verifiedFpMOnStop);
             console.groupEnd();
@@ -478,13 +495,13 @@
             if (autoActionIntervalId) clearInterval(autoActionIntervalId);
 
             // Initialisiere die Zähler für verifizierte FpM beim Start
-            if (typeof plan !== 'undefined' && typeof plan.counter === 'number') {
-                farmGodInitialCounter = plan.counter;
-                console.log('TW Auto-Action: Gestartet. Initialer plan.counter:', farmGodInitialCounter);
+            farmGodInitialCounter = getFarmGodCurrentCountFromUI();
+            if (farmGodInitialCounter === 0) {
+                console.warn("TW Auto-Action: Initialer FarmGod Zähler konnte nicht aus der Fortschrittsanzeige gelesen werden. Verifizierte FpM könnte ungenau sein.");
             } else {
-                farmGodInitialCounter = 0; // Fallback
-                console.warn("TW Auto-Action: 'plan.counter' nicht gefunden. Verifizierte FpM könnte ungenau sein.");
+                console.log('TW Auto-Action: Gestartet. Initialer FarmGod Zähler (von #FarmGodProgessbar.data("current")):', farmGodInitialCounter);
             }
+            
             autoActionStartTime = Date.now();
             verifiedFarmsPerMinute = 0; // Setze initial auf 0 bis zur ersten Berechnung
 
@@ -769,11 +786,17 @@
         lastFpMCalculationTime = Date.now();
     }
 
-    // --- NEUE Funktion zur Berechnung der verifizierten FpM ---
+    // --- Funktion zur Berechnung der verifizierten FpM ---
     function updateVerifiedFarmsPerMinute() {
-        if (!autoActionActive || autoActionStartTime === 0 || typeof plan === 'undefined' || typeof plan.counter !== 'number') {
-            verifiedFarmsPerMinute = 0; // Rücksetzen, wenn nicht aktiv oder plan.counter nicht verfügbar
+        if (!autoActionActive || autoActionStartTime === 0) {
+            verifiedFarmsPerMinute = 0; // Rücksetzen, wenn nicht aktiv
             return;
+        }
+
+        const currentCounter = getFarmGodCurrentCountFromUI();
+        if (currentCounter === 0 && farmGodInitialCounter === 0) {
+             verifiedFarmsPerMinute = 0; // Keine Daten vorhanden
+             return;
         }
 
         const currentTime = Date.now();
@@ -784,7 +807,7 @@
             return;
         }
 
-        const farmsSent = plan.counter - farmGodInitialCounter;
+        const farmsSent = (currentCounter >= farmGodInitialCounter) ? (currentCounter - farmGodInitialCounter) : 0; // Sicherstellen, dass es nicht negativ ist
 
         if (farmsSent <= 0) {
             verifiedFarmsPerMinute = 0;
@@ -829,10 +852,10 @@
         let totalFarmsRemainingTimeText = '';
         if (autoActionActive && calculatedFarmsPerMinute > 0 && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
             const farmGodProgressbarMax = $('#FarmGodProgessbar').data('max');
-            const farmGodProgressbarVal = $('#FarmGodProgessbar').val();
+            const farmGodProgressbarVal = $('#FarmGodProgessbar').val(); // Dieser Wert ist eigentlich der 'current' Wert
 
             if (farmGodProgressbarMax !== undefined && farmGodProgressbarVal !== undefined) {
-                const remainingFarms = farmGodProgressbarMax - farmGodProgressbarVal;
+                const remainingFarms = farmGodProgressbarMax - farmGodProgressbarVal; // Hier 'val()' für den aktuellen Stand
                 if (remainingFarms > 0) {
                     const estimatedMinutesFloat = remainingFarms / calculatedFarmsPerMinute;
                     const totalSecondsEstimate = Math.max(0, Math.round(estimatedMinutesFloat * 60));
@@ -902,17 +925,16 @@
         if (verifiedFpmStatusRef) {
             if (autoActionActive) {
                 const currentDuration = Date.now() - autoActionStartTime;
-                verifiedFpmStatusRef.text(`Laufzeit: ${formatDuration(currentDuration)}`);
-                verifiedFpmStatusRef.css({
-                    'background-color': '#007bff', // Blau für Laufzeit
-                    'color': '#ffffff'
-                });
                 if (verifiedFarmsPerMinute > 0 && currentDuration >= VERIFIED_FPM_UPDATE_INTERVAL_MS) {
-                     // Wenn genug Daten für FpM, dann FpM als zusätzliche Info anzeigen, z.B. Tooltip oder neben Laufzeit
-                     // Aktuell überschreibt es die Laufzeit. Wir passen das an, um beide Infos zu zeigen.
-                     verifiedFpmStatusRef.text(`Laufzeit: ${formatDuration(currentDuration)} | FpM: ${verifiedFarmsPerMinute}`);
+                     verifiedFpmStatusRef.text(`FpM: ${verifiedFarmsPerMinute} | LZ: ${formatDuration(currentDuration)}`);
                      verifiedFpmStatusRef.css({
                         'background-color': '#4CAF50', // Grün, wenn FpM angezeigt wird
+                        'color': '#ffffff'
+                    });
+                } else {
+                     verifiedFpmStatusRef.text(`Laufzeit: ${formatDuration(currentDuration)}`);
+                     verifiedFpmStatusRef.css({
+                        'background-color': '#007bff', // Blau für Laufzeit
                         'color': '#ffffff'
                     });
                 }
@@ -1086,7 +1108,7 @@
                 }, 1000);
             }
 
-            const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'value', 'data-max'] };
+            const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'value', 'data-current', 'data-max'] }; // 'data-current' hinzugefügt
 
             const observer = new MutationObserver((mutationsList, observer) => {
                 const relevantChange = mutationsList.some(mutation =>
@@ -1097,7 +1119,7 @@
                 // Check FarmGod progressbar changes to update remaining time more actively
                 const farmGodProgressbarChanged = mutationsList.some(mutation =>
                     $(mutation.target).is('#FarmGodProgessbar') || $(mutation.target).find('#FarmGodProgessbar').length > 0 ||
-                    (mutation.type === 'attributes' && mutation.target.id === 'FarmGodProgessbar' && (mutation.attributeName === 'value' || mutation.attributeName === 'data-max'))
+                    (mutation.type === 'attributes' && mutation.target.id === 'FarmGodProgessbar' && (mutation.attributeName === 'value' || mutation.attributeName === 'data-max' || mutation.attributeName === 'data-current')) // 'data-current' hinzugefügt
                 );
 
                 // UI Status nur aktualisieren, wenn relevante Änderungen oder wenn das Skript aktiv ist
