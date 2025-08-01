@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.5.0 // Version auf 3.5.0 aktualisiert - Farms/Min Anzeige
-// @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min Anzeige.
+// @version       3.6.1 // Version auf 3.6.1 aktualisiert - Changelog verkürzt
+// @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min Anzeige und Changelog.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
 // @grant         none
@@ -17,10 +17,22 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.5.0'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.6.1'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
+
+    // --- Changelog Definition (nur aktuelle und vorherige Version) ---
+    const CHANGELOG = `
+    --- Changelog TW Auto-Action ---
+
+    v3.6.1 (2025-08-01):
+    - Anzeige des Changelogs im Alert auf die aktuelle und letzte Version gekürzt.
+
+    v3.6.0 (2025-08-01):
+    - NEU: Changelog-Anzeige beim ersten Laden einer neuen Version.
+    - Kleinere interne Optimierungen.
+    `;
 
     // --- Sound-Profile Definitionen ---
     const soundProfiles = {
@@ -744,6 +756,17 @@
         updateUIStatus();
     }
 
+    // --- Changelog-Anzeige beim ersten Laden einer neuen Version ---
+    function showChangelogIfNewVersion() {
+        const lastSeenVersion = localStorage.getItem('tw_auto_action_last_seen_version');
+
+        if (lastSeenVersion !== SCRIPT_VERSION) {
+            // Version ist neu oder wurde noch nie gesehen
+            alert(CHANGELOG.trim());
+            localStorage.setItem('tw_auto_action_last_seen_version', SCRIPT_VERSION);
+        }
+    }
+
     // --- Skript-Initialisierung ---
     loadSettings();
 
@@ -756,6 +779,7 @@
 
         $(document).ready(function() {
             addAmFarmSettingsButton();
+            showChangelogIfNewVersion(); // Changelog beim Start prüfen und anzeigen
 
             if (!initialReadyMessageShown && typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 setTimeout(() => {
