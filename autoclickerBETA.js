@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.8.0 // Version auf 3.8.0 aktualisiert für Restzeitanzeige
-// @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min Anzeige und Changelog.
+// @version      3.9.0 // Version auf 3.9.0 aktualisiert für Restlaufzeit
+// @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
 // @grant        none
@@ -17,13 +17,16 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.8.0'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.0'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.0 (2025-08-01):
+    - NEU: Anzeige der geschätzten Restlaufzeit, um alle verfügbaren Farmen abzuarbeiten, basierend auf FarmGod-Daten.`,
+
         `v3.8.0 (2025-08-01):
     - NEU: Anzeige der geschätzten Restzeit bis zum nächsten Klick in der Statusleiste und im Tab-Titel.`,
 
@@ -677,44 +680,72 @@
 
         // Farms/Min Berechnung
         let farmsPerMinute = 0;
-        if (autoActionActive && clickTimestamps.length > 0) { // Geändert zu > 0, da 1 Klick auch eine Schätzung erlaubt
+        if (autoActionActive && clickTimestamps.length > 0) {
             const now = Date.now();
-            // Nur Zeitstempel innerhalb der letzten Minute berücksichtigen
             const recentClicks = clickTimestamps.filter(ts => (now - ts) <= 60000);
 
             if (recentClicks.length > 1) {
                 const oldestClickTime = recentClicks[0];
                 const timeSpanSeconds = (now - oldestClickTime) / 1000;
 
-                // Mindestens 5 Sekunden Daten, um eine vernünftige Rate zu haben
-                if (timeSpanSeconds >= 5) {
+                if (timeSpanSeconds >= 5) { // Mindestens 5 Sekunden Daten für genauere Rate
                     const clicksInTimeSpan = recentClicks.length;
                     farmsPerMinute = (clicksInTimeSpan / timeSpanSeconds) * 60;
-                } else if (recentClicks.length === 1) {
-                    // Wenn nur ein Klick, basieren wir die Schätzung auf dem erwarteten Minimum-Intervall
-                    // Dies ist eine sehr grobe Schätzung, dient aber als erster Indikator
-                    farmsPerMinute = (1 / (currentSettings.minInterval / 1000)) * 60;
+                } else if (recentClicks.length > 0) { // Wenn weniger als 5s Daten aber Klicks vorhanden
+                    // Schätzung basierend auf dem Durchschnitt des Intervalls
+                    const avgInterval = (currentSettings.minInterval + currentSettings.maxInterval) / 2;
+                    if (avgInterval > 0) {
+                        farmsPerMinute = (recentClicks.length / (avgInterval / 1000)) * 60;
+                    }
                 }
             } else if (recentClicks.length === 1 && autoActionActive) {
-                // Wenn nur ein Klick und aktiv, grobe Schätzung basierend auf Min-Intervall
-                farmsPerMinute = (1 / (currentSettings.minInterval / 1000)) * 60;
+                // Wenn nur ein Klick und aktiv, grobe Schätzung basierend auf dem Durchschnittsintervall
+                const avgInterval = (currentSettings.minInterval + currentSettings.maxInterval) / 2;
+                if (avgInterval > 0) {
+                    farmsPerMinute = (1 / (avgInterval / 1000)) * 60;
+                }
             }
         }
-        farmsPerMinute = Math.round(farmsPerMinute); // Auf ganze Zahl runden
+        farmsPerMinute = Math.round(farmsPerMinute);
 
         const farmsPerMinuteText = (autoActionActive && farmsPerMinute > 0) ? `(${farmsPerMinute} Farms/Min)` : '';
 
-        // Restzeitanzeige
-        let remainingTimeText = '';
+        // Restzeit bis zum nächsten Klick
+        let nextClickRemainingTimeText = '';
         if (autoActionActive && nextClickTime > 0) {
             const timeRemainingMs = nextClickTime - Date.now();
             if (timeRemainingMs > 0) {
                 const seconds = Math.ceil(timeRemainingMs / 1000);
-                remainingTimeText = ` (Nächster Klick: ${seconds}s)`;
+                nextClickRemainingTimeText = ` (Nächster: ${seconds}s)`;
             } else {
-                remainingTimeText = ` (Klick ausstehend)`; // Sollte selten auftreten, wenn setInterval korrekt ist
+                nextClickRemainingTimeText = ` (Klick ausstehend)`;
             }
         }
+
+        // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen (NEU)
+        let totalFarmsRemainingTimeText = '';
+        if (autoActionActive && farmsPerMinute > 0 && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
+            const farmGodProgressbarMax = $('#FarmGodProgessbar').data('max');
+            const farmGodProgressbarVal = $('#FarmGodProgessbar').val(); // Aktueller Wert der Progressbar
+
+            if (farmGodProgressbarMax !== undefined && farmGodProgressbarVal !== undefined) {
+                const remainingFarms = farmGodProgressbarMax - farmGodProgressbarVal;
+                if (remainingFarms > 0) {
+                    const estimatedMinutes = remainingFarms / farmsPerMinute;
+                    const hours = Math.floor(estimatedMinutes / 60);
+                    const minutes = Math.round(estimatedMinutes % 60);
+
+                    if (hours > 0) {
+                        totalFarmsRemainingTimeText = ` | Rest: ${hours}h ${minutes}m`;
+                    } else if (minutes > 0) {
+                        totalFarmsRemainingTimeText = ` | Rest: ${minutes}m`;
+                    } else if (remainingFarms > 0) {
+                         totalFarmsRemainingTimeText = ` | Rest: <1m`; // Für sehr kurze Restzeiten
+                    }
+                }
+            }
+        }
+
 
         const defaultButtonBg = '#f0e2b6';
         const defaultButtonBorder = '#804000';
@@ -740,8 +771,8 @@
             statusText = `[BOTSCHUTZ] Auto-Action pausiert! ${farmsPerMinuteText}`;
         } else if (autoActionActive) {
             statusBarBgColor = '#28a745'; // Grün
-            currentTabTitle = `[AKTIV] TW Auto-Action ${farmsPerMinuteText}${remainingTimeText} | ${originalDocumentTitle}`;
-            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteText}${remainingTimeText}`;
+            currentTabTitle = `[AKTIV] TW Auto-Action ${farmsPerMinuteText}${nextClickRemainingTimeText}${totalFarmsRemainingTimeText} | ${originalDocumentTitle}`;
+            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteText}${nextClickRemainingTimeText}${totalFarmsRemainingTimeText}`;
         } else if (noFarmButtonsDetected) {
             statusBarBgColor = '#ffc107'; // Gelb
             currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
@@ -899,13 +930,17 @@
             const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] };
 
             const observer = new MutationObserver((mutationsList, observer) => {
-                // UI-Update nur triggern, wenn es aktiv ist oder sich etwas relevantes ändert (Botschutz/Buttons)
                 const relevantChange = mutationsList.some(mutation =>
                     mutation.type === 'childList' ||
                     (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class'))
                 );
 
-                if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || relevantChange) {
+                // Check FarmGod progressbar changes to update remaining time more actively
+                const farmGodProgressbarChanged = mutationsList.some(mutation =>
+                    $(mutation.target).is('#FarmGodProgessbar') || $(mutation.target).find('#FarmGodProgessbar').length > 0
+                );
+
+                if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || relevantChange || farmGodProgressbarChanged) {
                     const botProtectionFound = checkAntiBotProtection();
 
                     if (!botProtectionFound && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
