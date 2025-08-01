@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.4.3 // Version auf 3.4.3 aktualisiert - Start-Ton an Einstellung gekoppelt
-// @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite.
+// @version       3.5.0 // Version auf 3.5.0 aktualisiert - Farms/Min Anzeige
+// @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min Anzeige.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
 // @grant         none
@@ -17,7 +17,7 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.4.3'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.5.0'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
@@ -99,6 +99,10 @@
     let noFarmButtonsDetected = false;
     let initialReadyMessageShown = false; // Flag für die initiale Nachricht
 
+    // *** Variablen für Farms/Minute ***
+    const clickTimestamps = []; // Speichert Zeitstempel der letzten Klicks
+    const MAX_TIMESTAMPS = 60; // Anzahl der Zeitstempel, die wir speichern, um die Rate zu berechnen (letzte Minute)
+
     // --- Hilfsfunktion zum Generieren eines zufälligen Intervalls ---
     function getRandomInterval(min, max) {
         return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -155,7 +159,7 @@
                 oscillator.start();
                 gainNode.gain.exponentialRampToValueAtTime(0.001, context.currentTime + profile.duration);
                 oscillator.stop(context.currentTime + profile.duration);
-                console.log(`TW Auto-Action: Oszillator-Ton '${profile.name}' abgespielt.`);
+                // console.log(`TW Auto-Action: Oszillator-Ton '${profile.name}' abgespielt.`); // Weniger Log-Spam
             } catch (e) {
                 console.error("TW Auto-Action: FEHLER beim Erzeugen oder Starten des Oszillators.", e);
             }
@@ -176,10 +180,9 @@
     }
 
     // Funktion für den Aktivierungs-Test-Ton (spielt den aktuell ausgewählten Ton, entsperrt Context)
-    // DIESE FUNKTION WURDE ANGEPASST, UM currentSettings.soundEnabled ZU PRÜFEN
     function playActivationTestTone() {
-        console.log('TW Auto-Action: Test-Ton durch Aktivierung angefordert...');
-        if (!currentSettings.soundEnabled) { // Hinzugefügte Prüfung
+        // console.log('TW Auto-Action: Test-Ton durch Aktivierung angefordert...'); // Weniger Log-Spam
+        if (!currentSettings.soundEnabled) {
             console.log('TW Auto-Action: Sound ist in den Einstellungen deaktiviert. Überspringe Test-Ton.');
             return;
         }
@@ -217,7 +220,6 @@
         let isBotProtectionVisible = false;
         for (const selector of botProtectionSelectors) {
             const element = $(selector);
-            // Zusätzliche Überprüfung auf Höhe und Breite, um unsichtbare/geblitzte Elemente auszuschließen
             if (element.length > 0 && element.is(':visible') && element.css('display') !== 'none' && element.css('visibility') !== 'hidden' && element.attr('disabled') !== 'disabled' && element.outerWidth() > 0 && element.outerHeight() > 0) {
                 isBotProtectionVisible = true;
                 break;
@@ -264,11 +266,18 @@
             const farmButton = $(FARM_BUTTON_SELECTOR).first();
 
             if (farmButton.length > 0 && farmButton.is(':visible') && !farmButton.is(':disabled')) {
+                // Klick erfolgreich, Zeitstempel hinzufügen
+                clickTimestamps.push(Date.now());
+                // Nur die letzten X Zeitstempel behalten
+                while (clickTimestamps.length > MAX_TIMESTAMPS) {
+                    clickTimestamps.shift();
+                }
+
                 if (noFarmButtonsDetected) {
                     noFarmButtonsDetected = false;
-                    updateUIStatus();
                 }
                 farmButton.trigger('click');
+                updateUIStatus(); // UI nach jedem Klick aktualisieren für aktuelle Farms/Min
             } else {
                 if (!noFarmButtonsDetected) {
                     noFarmButtonsDetected = true;
@@ -323,14 +332,16 @@
             clearInterval(autoActionIntervalId);
             autoActionIntervalId = null;
             autoActionActive = false;
+            // Klick-Historie zurücksetzen, wenn gestoppt wird
+            clickTimestamps.length = 0;
+
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 UI.InfoMessage('Auto-Action gestoppt.', 2000);
             }
             noFarmButtonsDetected = false;
             botProtectionDetected = false;
         } else {
-            // Ton nur abspielen, wenn in den Einstellungen aktiviert
-            playActivationTestTone(); // Diese Funktion prüft nun selbst die Einstellung
+            playActivationTestTone();
 
             if (checkAntiBotProtection()) {
                 return;
@@ -559,8 +570,37 @@
 
     function updateUIStatus() {
         let currentTabTitle = originalDocumentTitle;
-        let currentStatusText = 'TW Auto-Action ist bereit.';
-        let statusBarBgColor = '#ffc107';
+        let statusText = 'TW Auto-Action ist bereit.';
+        let statusBarBgColor = '#ffc107'; // Standard: Gelb
+
+        // Farms/Min Berechnung
+        let farmsPerMinute = 0;
+        if (autoActionActive && clickTimestamps.length > 1) {
+            const now = Date.now();
+            // Nur Zeitstempel innerhalb der letzten Minute berücksichtigen
+            const recentClicks = clickTimestamps.filter(ts => (now - ts) <= 60000);
+
+            if (recentClicks.length > 1) {
+                const oldestClickTime = recentClicks[0];
+                const timeSpanSeconds = (now - oldestClickTime) / 1000;
+
+                // Mindestens 5 Sekunden Daten, um eine vernünftige Rate zu haben
+                if (timeSpanSeconds >= 5) {
+                    const clicksInTimeSpan = recentClicks.length;
+                    farmsPerMinute = (clicksInTimeSpan / timeSpanSeconds) * 60;
+                } else {
+                    // Wenn noch nicht genügend Daten für 5 Sekunden, Rate basierend auf den vorhandenen Klicks in kurzer Zeit
+                    farmsPerMinute = (recentClicks.length / (currentSettings.minInterval / 1000)) * 60; // Grobe Schätzung basierend auf minInterval
+                }
+            } else if (recentClicks.length === 1) {
+                // Wenn nur ein Klick, Rate schwer zu schätzen, warten auf mehr
+                farmsPerMinute = 0; // Oder eine sehr grobe Schätzung, z.B. 60 / (minInterval/1000)
+            }
+        }
+        farmsPerMinute = Math.round(farmsPerMinute); // Auf ganze Zahl runden
+
+        const farmsPerMinuteText = (autoActionActive && farmsPerMinute > 0) ? `(${farmsPerMinute} Farms/Min)` : '';
+
 
         const defaultButtonBg = '#f0e2b6';
         const defaultButtonBorder = '#804000';
@@ -581,26 +621,26 @@
         }
 
         if (botProtectionDetected) {
-            statusBarBgColor = '#dc3545';
+            statusBarBgColor = '#dc3545'; // Rot
             currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
-            currentStatusText = '[BOTSCHUTZ] Auto-Action pausiert!';
+            statusText = `[BOTSCHUTZ] Auto-Action pausiert! ${farmsPerMinuteText}`;
         } else if (autoActionActive) {
-            statusBarBgColor = '#28a745';
+            statusBarBgColor = '#28a745'; // Grün
             currentTabTitle = `[AKTIV] TW Auto-Action | ${originalDocumentTitle}`;
-            currentStatusText = '[AKTIV] Auto-Action läuft...';
+            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteText}`;
         } else if (noFarmButtonsDetected) {
-            statusBarBgColor = '#ffc107';
+            statusBarBgColor = '#ffc107'; // Gelb
             currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
-            currentStatusText = '[KEINE BUTTONS] Auto-Action gestoppt.';
+            statusText = `[KEINE BUTTONS] Auto-Action gestoppt. ${farmsPerMinuteText}`;
         } else {
-            statusBarBgColor = '#ffc107';
-            currentStatusText = 'Auto-Action ist inaktiv.';
+            statusBarBgColor = '#ffc107'; // Gelb
+            statusText = `Auto-Action ist inaktiv. ${farmsPerMinuteText}`;
         }
 
         document.title = currentTabTitle;
 
         if (statusBarRef) {
-            statusBarRef.text(currentStatusText);
+            statusBarRef.text(statusText);
             statusBarRef.css({
                 'background-color': statusBarBgColor,
                 'color': '#ffffff'
@@ -733,42 +773,41 @@
             const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] };
 
             const observer = new MutationObserver((mutationsList, observer) => {
-                if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || !initialReadyMessageShown) {
-                    const relevantChange = mutationsList.some(mutation =>
-                        mutation.type === 'childList' ||
-                        (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class'))
-                    );
+                // UI-Update nur triggern, wenn es aktiv ist oder sich etwas relevantes ändert (Botschutz/Buttons)
+                const relevantChange = mutationsList.some(mutation =>
+                    mutation.type === 'childList' ||
+                    (mutation.type === 'attributes' && (mutation.attributeName === 'style' || mutation.attributeName === 'class'))
+                );
 
-                    if (relevantChange) {
-                        const botProtectionFound = checkAntiBotProtection();
+                if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || relevantChange) {
+                    const botProtectionFound = checkAntiBotProtection();
 
-                        if (!botProtectionFound && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
-                            const farmButton = $(FARM_BUTTON_SELECTOR).first();
-                            if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
-                                if (autoActionActive) {
-                                    clearInterval(autoActionIntervalId);
-                                    autoActionIntervalId = null;
-                                    autoActionActive = false;
-                                    if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
-                                        UI.InfoMessage('Keine Farm-Buttons mehr gefunden/sichtbar. Auto-Action gestoppt!', 3000);
-                                    }
-                                }
-                                if (!noFarmButtonsDetected) {
-                                    noFarmButtonsDetected = true;
-                                    updateUIStatus();
-                                }
-                            } else {
-                                if (noFarmButtonsDetected) {
-                                    noFarmButtonsDetected = false;
-                                    updateUIStatus();
+                    if (!botProtectionFound && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
+                        const farmButton = $(FARM_BUTTON_SELECTOR).first();
+                        if (farmButton.length === 0 || !farmButton.is(':visible') || farmButton.is(':disabled')) {
+                            if (autoActionActive) {
+                                clearInterval(autoActionIntervalId);
+                                autoActionIntervalId = null;
+                                autoActionActive = false;
+                                if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
+                                    UI.InfoMessage('Keine Farm-Buttons mehr gefunden/sichtbar. Auto-Action gestoppt!', 3000);
                                 }
                             }
-                        } else if (!botProtectionFound) {
-                            if (noFarmButtonsDetected || botProtectionDetected) {
-                                noFarmButtonsDetected = false;
-                                botProtectionDetected = false;
+                            if (!noFarmButtonsDetected) {
+                                noFarmButtonsDetected = true;
                                 updateUIStatus();
                             }
+                        } else {
+                            if (noFarmButtonsDetected) {
+                                noFarmButtonsDetected = false;
+                                updateUIStatus();
+                            }
+                        }
+                    } else if (!botProtectionFound) {
+                        if (noFarmButtonsDetected || botProtectionDetected) {
+                            noFarmButtonsDetected = false;
+                            botProtectionDetected = false;
+                            updateUIStatus();
                         }
                     }
                 }
@@ -776,6 +815,7 @@
 
             observer.observe(document.body, observerConfig);
 
+            // Initialen Status setzen
             checkAntiBotProtection();
             if (typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
                 const farmButton = $(FARM_BUTTON_SELECTOR).first();
