@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.7.0 // Version auf 3.7.0 aktualisiert - Changelog-Button
+// @version       3.7.1 // Version auf 3.7.1 aktualisiert - Changelog auf 5 Versionen begrenzt
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min Anzeige und Changelog.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,65 +17,60 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.7.0'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.7.1'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
-    // --- Vollständiges Changelog Definition ---
-    const FULL_CHANGELOG = `
-    --- Changelog TW Auto-Action ---
+    // --- Alle Changelog-Einträge ---
+    const ALL_CHANGELOG_ENTRIES = [
+        `v3.7.1 (2025-08-01):
+    - Anzeige des Changelogs (Pop-up und manuell) auf die letzten 5 Versionen begrenzt.`,
 
-    v3.7.0 (2025-08-01):
-    - NEU: "Changelog anzeigen"-Button im Einstellungsdialog für manuelles Einsehen.
+        `v3.7.0 (2025-08-01):
+    - NEU: "Changelog anzeigen"-Button im Einstellungsdialog für manuelles Einsehen.`,
 
-    v3.6.1 (2025-08-01):
-    - Anzeige des Changelogs im Alert auf die aktuelle und letzte Version gekürzt.
+        `v3.6.1 (2025-08-01):
+    - Anzeige des Changelogs im Alert auf die aktuelle und letzte Version gekürzt.`,
 
-    v3.6.0 (2025-08-01):
+        `v3.6.0 (2025-08-01):
     - NEU: Changelog-Anzeige beim ersten Laden einer neuen Version.
-    - Kleinere interne Optimierungen.
+    - Kleinere interne Optimierungen.`,
 
-    v3.5.0 (2025-07-31):
+        `v3.5.0 (2025-07-31):
     - NEU: Anzeige der "Farms pro Minute" in der Statusleiste.
-    - Verbesserte Logik für die Farms/Min-Berechnung.
+    - Verbesserte Logik für die Farms/Min-Berechnung.`,
 
-    v3.4.3 (2025-07-30):
-    - FIX: Start-Ton respektiert nun die Einstellung "Botschutz-Ton abspielen".
+        `v3.4.3 (2025-07-30):
+    - FIX: Start-Ton respektiert nun die Einstellung "Botschutz-Ton abspielen".`,
 
-    v3.4.2 (2025-07-29):
+        `v3.4.2 (2025-07-29):
     - FIX: Verbesserte Botschutz-Erkennung für mehr Szenarien.
-    - Verbesserte Stabilität beim Starten/Stoppen des Skripts.
+    - Verbesserte Stabilität beim Starten/Stoppen des Skripts.`,
 
-    v3.4.1 (2025-07-28):
-    - FIX: Fehlerbehebung bei der Erkennung von Farm-Buttons auf bestimmten Seitenlayouts.
+        `v3.4.1 (2025-07-28):
+    - FIX: Fehlerbehebung bei der Erkennung von Farm-Buttons auf bestimmten Seitenlayouts.`,
 
-    v3.4.0 (2025-07-27):
+        `v3.4.0 (2025-07-27):
     - NEU: Einstellungsdialog für Hotkey, Intervalle, Botschutz-Verhalten und Sound.
     - NEU: Sound-Benachrichtigung bei Botschutz-Erkennung (konfigurierbar).
     - NEU: Globale Funktion window.toggleTribalAutoAction() zur externen Steuerung.
-    - Überarbeitung der UI-Elemente für bessere Integration.
+    - Überarbeitung der UI-Elemente für bessere Integration.`,
 
-    v3.3.0 (2025-07-26):
+        `v3.3.0 (2025-07-26):
     - NEU: Hotkey-Unterstützung (Standard: Shift+Strg+E) zum Starten/Stoppen.
     - Zufälliges Intervall für Klicks hinzugefügt.
     - Erkennung von Botschutz-Abfragen und automatische Pause.
-    - Statusanzeige im Tab-Titel.
+    - Statusanzeige im Tab-Titel.`
+    ];
 
-    v3.2.0 (2025-07-25):
-    - Erste Version mit grundlegender Auto-Klick-Funktionalität für Farm-Buttons.
-    `;
+    // --- Generiere das Changelog für den Alert (erste 2 Versionen) ---
+    const SHORT_CHANGELOG = `--- Changelog TW Auto-Action ---\n\n` +
+                            ALL_CHANGELOG_ENTRIES.slice(0, 2).join('\n\n');
 
-    // --- Verkürztes Changelog für einmaliges Pop-up ---
-    const SHORT_CHANGELOG = `
-    --- Changelog TW Auto-Action ---
-
-    v${SCRIPT_VERSION} (2025-08-01):
-    - NEU: "Changelog anzeigen"-Button im Einstellungsdialog für manuelles Einsehen.
-
-    v3.6.1 (2025-08-01):
-    - Anzeige des Changelogs im Alert auf die aktuelle und letzte Version gekürzt.
-    `;
+    // --- Generiere das vollständige Changelog (erste 5 Versionen) ---
+    const FULL_CHANGELOG = `--- Changelog TW Auto-Action ---\n\n` +
+                           ALL_CHANGELOG_ENTRIES.slice(0, 5).join('\n\n');
 
 
     // --- Sound-Profile Definitionen ---
