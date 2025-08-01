@@ -26,7 +26,9 @@
     const ALL_CHANGELOG_ENTRIES = [
         `v3.9.0-BETA (2025-08-01):
     - BETA: Diese Version ist eine Testversion für zukünftige Verbesserungen.
-    - NEU: "Verifizierte FpM" Anzeige hinzugefügt, um die Genauigkeit der FpM-Berechnung zu überprüfen. Diese basiert auf der tatsächlichen Anzahl gesendeter Farmen (plan.counter) und der Skript-Laufzeit.`,
+    - NEU: "Verifizierte FpM" Anzeige hinzugefügt, um die Genauigkeit der FpM-Berechnung zu überprüfen. Diese basiert auf der tatsächlichen Anzahl gesendeter Farmen (plan.counter) und der Skript-Laufzeit.
+    - NEU: Anzeige der **aktuellen Laufzeit** der Auto-Action im neuen Feld links vom Start/Stopp-Button.
+    - NEU: Konsolenprüfung für 'plan.counter' beim Start und Stopp der Auto-Action für detaillierte FpM-Gegenprüfung.`,
 
         `v3.8.0 (2025-08-01):
     - FIX: Behebung eines Fehlers, der dazu führte, dass das Skript manchmal nach dem ersten Klick nicht mehr korrekt das Intervall neu startete. Dies stellt die zuverlässige Fortsetzung der Klicks sicher.
@@ -170,10 +172,10 @@
     let lastFpMCalculationTime = 0; // Zeitstempel der letzten FpM-Berechnung
     const FPM_UPDATE_INTERVAL_MS = 5000; // FpM alle 5 Sekunden aktualisieren
 
-    // --- NEUE Variablen für verifizierte FpM ---
-    let farmGodInitialCounter = 0;
-    let autoActionStartTime = 0;
-    let verifiedFarmsPerMinute = 0;
+    // --- NEUE Variablen für verifizierte FpM & Laufzeit ---
+    let farmGodInitialCounter = 0; // Startwert von plan.counter
+    let autoActionStartTime = 0;   // Startzeitpunkt der Auto-Action
+    let verifiedFarmsPerMinute = 0; // Berechnete FpM aus plan.counter
     const VERIFIED_FPM_UPDATE_INTERVAL_MS = 10000; // Verifizierte FpM alle 10 Sekunden aktualisieren
 
     // --- Hilfsfunktion zum Generieren eines zufälligen Intervalls ---
@@ -429,10 +431,26 @@
             calculatedFarmsPerMinute = 0;
             lastFpMCalculationTime = 0;
 
-            // Zähler für verifizierte FpM zurücksetzen
+            // Für die Konsolenprüfung beim Stoppen
+            const finalCounter = (typeof plan !== 'undefined' && typeof plan.counter === 'number') ? plan.counter : 'N/A';
+            const durationMs = Date.now() - autoActionStartTime;
+            const farmsSentFinal = (typeof plan !== 'undefined' && typeof plan.counter === 'number' && farmGodInitialCounter !== 0) ? (plan.counter - farmGodInitialCounter) : 0;
+            const verifiedFpMOnStop = (farmsSentFinal > 0 && durationMs > 0) ? Math.round((farmsSentFinal / (durationMs / 1000)) * 60) : 0;
+
+            console.groupCollapsed('TW Auto-Action Stopp-Details (v' + SCRIPT_VERSION + ')');
+            console.log('--- Stopp ---');
+            console.log('Initialer plan.counter:', farmGodInitialCounter === 0 ? 'Nicht erfasst/0' : farmGodInitialCounter);
+            console.log('End-plan.counter:', finalCounter);
+            console.log('Gesendete Farmen (Differenz):', farmsSentFinal);
+            console.log('Laufzeit:', formatDuration(durationMs));
+            console.log('Verifizierte FpM beim Stopp:', verifiedFpMOnStop);
+            console.groupEnd();
+
+
+            // Zähler für verifizierte FpM zurücksetzen für den nächsten Start
             farmGodInitialCounter = 0;
             autoActionStartTime = 0;
-            verifiedFarmsPerMinute = 0;
+            verifiedFarmsPerMinute = verifiedFpMOnStop; // Zeige den letzten Wert an, bis neuer Start
 
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 UI.InfoMessage('Auto-Action gestoppt.', 2000);
@@ -462,9 +480,9 @@
             // Initialisiere die Zähler für verifizierte FpM beim Start
             if (typeof plan !== 'undefined' && typeof plan.counter === 'number') {
                 farmGodInitialCounter = plan.counter;
+                console.log('TW Auto-Action: Gestartet. Initialer plan.counter:', farmGodInitialCounter);
             } else {
-                // Fallback, wenn plan.counter nicht verfügbar ist
-                farmGodInitialCounter = 0;
+                farmGodInitialCounter = 0; // Fallback
                 console.warn("TW Auto-Action: 'plan.counter' nicht gefunden. Verifizierte FpM könnte ungenau sein.");
             }
             autoActionStartTime = Date.now();
@@ -754,7 +772,7 @@
     // --- NEUE Funktion zur Berechnung der verifizierten FpM ---
     function updateVerifiedFarmsPerMinute() {
         if (!autoActionActive || autoActionStartTime === 0 || typeof plan === 'undefined' || typeof plan.counter !== 'number') {
-            verifiedFarmsPerMinute = 0;
+            verifiedFarmsPerMinute = 0; // Rücksetzen, wenn nicht aktiv oder plan.counter nicht verfügbar
             return;
         }
 
@@ -775,6 +793,18 @@
         }
     }
 
+    // --- Hilfsfunktion zur Formatierung der Dauer (HH:MM:SS) ---
+    function formatDuration(milliseconds) {
+        const totalSeconds = Math.floor(milliseconds / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+
+        const pad = (num) => num.toString().padStart(2, '0');
+
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    }
+
 
     function updateUIStatus() {
         let currentTabTitle = originalDocumentTitle;
@@ -789,17 +819,11 @@
              lastFpMCalculationTime = 0;
         }
 
-        // Verifizierte FpM Berechnung nur, wenn genug Zeit seit letzter Berechnung vergangen ist oder wenn Skript gerade gestartet/gestoppt wurde
-        if (autoActionActive && (Date.now() - autoActionStartTime >= VERIFIED_FPM_UPDATE_INTERVAL_MS || autoActionStartTime === 0)) {
-             updateVerifiedFarmsPerMinute();
-        } else if (!autoActionActive) {
-             verifiedFarmsPerMinute = 0; // Auch hier zurücksetzen, wenn inaktiv
-        }
+        // Verifizierte FpM Berechnung (immer aufrufen, da auch Laufzeit aktualisiert wird)
+        updateVerifiedFarmsPerMinute();
 
 
         const farmsPerMinuteText = (autoActionActive && calculatedFarmsPerMinute > 0) ? `(${calculatedFarmsPerMinute} Farms/Min)` : '';
-        const verifiedFpmText = (autoActionActive && verifiedFarmsPerMinute > 0) ? ` (Verifiziert: ${verifiedFarmsPerMinute} FpM)` : '';
-
 
         // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen (Immer aktuell berechnen, basierend auf dem gestabilisierten FpM)
         let totalFarmsRemainingTimeText = '';
@@ -874,19 +898,38 @@
             });
         }
 
-        // Update des neuen Feldes für verifizierte FpM
+        // Update des neuen Feldes für Laufzeit / verifizierte FpM
         if (verifiedFpmStatusRef) {
-            verifiedFpmStatusRef.text(verifiedFpmText.trim() === '' ? '' : verifiedFpmText.replace(/[()]/g, '')); // Klammern entfernen
-            if (autoActionActive && verifiedFarmsPerMinute > 0) {
+            if (autoActionActive) {
+                const currentDuration = Date.now() - autoActionStartTime;
+                verifiedFpmStatusRef.text(`Laufzeit: ${formatDuration(currentDuration)}`);
                 verifiedFpmStatusRef.css({
-                    'background-color': '#4CAF50', // Grün, wenn aktiv und Werte da sind
+                    'background-color': '#007bff', // Blau für Laufzeit
                     'color': '#ffffff'
                 });
+                if (verifiedFarmsPerMinute > 0 && currentDuration >= VERIFIED_FPM_UPDATE_INTERVAL_MS) {
+                     // Wenn genug Daten für FpM, dann FpM als zusätzliche Info anzeigen, z.B. Tooltip oder neben Laufzeit
+                     // Aktuell überschreibt es die Laufzeit. Wir passen das an, um beide Infos zu zeigen.
+                     verifiedFpmStatusRef.text(`Laufzeit: ${formatDuration(currentDuration)} | FpM: ${verifiedFarmsPerMinute}`);
+                     verifiedFpmStatusRef.css({
+                        'background-color': '#4CAF50', // Grün, wenn FpM angezeigt wird
+                        'color': '#ffffff'
+                    });
+                }
             } else {
-                verifiedFpmStatusRef.css({
-                    'background-color': '#ffc107', // Gelb, wenn inaktiv oder keine Werte
-                    'color': '#ffffff'
-                });
+                 if (verifiedFarmsPerMinute > 0) {
+                     verifiedFpmStatusRef.text(`Letzte FpM: ${verifiedFarmsPerMinute}`);
+                     verifiedFpmStatusRef.css({
+                         'background-color': '#ffc107', // Gelb, wenn gestoppt und letzte FpM angezeigt wird
+                         'color': '#ffffff'
+                     });
+                 } else {
+                     verifiedFpmStatusRef.text(''); // Leer, wenn inaktiv und keine FpM
+                     verifiedFpmStatusRef.css({
+                        'background-color': '#ffc107', // Standard gelb
+                        'color': '#ffffff'
+                    });
+                 }
             }
         }
     }
@@ -946,7 +989,7 @@
             </div>
         `;
 
-        // Neues HTML für die verifizierte FpM-Anzeige
+        // Neues HTML für die verifizierte FpM-Anzeige / Laufzeit-Anzeige
         const verifiedFpmStatusHtml = `
             <div id="tw_auto_action_verified_fpm_status" style="
                 background-color: #ffc107;
@@ -956,7 +999,7 @@
                 font-size: 12px;
                 text-align: center;
                 white-space: nowrap;
-                min-width: 50px; /* Mindestbreite */
+                min-width: 100px; /* Mindestbreite anpassen für Laufzeit */
                 flex-shrink: 0; /* Verhindert Schrumpfen */
             ">
                 </div>
