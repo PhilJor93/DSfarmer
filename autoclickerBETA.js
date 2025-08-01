@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.3-BETA // Version auf 3.9.3-BETA aktualisiert
+// @version      3.9.4-BETA // Version auf 3.9.4-BETA aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,13 +17,16 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.3-BETA'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.4-BETA'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge (die vollständige Historie) ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.4-BETA (2025-08-01):
+    - ANPASSUNG: Das separate Feld für "FpM" und "Laufzeit" links vom Start/Stopp-Button wurde entfernt. Diese Informationen werden nun direkt und kompakter in die Haupt-Statusleiste integriert, wenn die Auto-Action aktiv ist.`,
+
         `v3.9.3-BETA (2025-08-01):
     - NEU: Berechnung eines **Mittelwerts der FpM** aus der skript-eigenen Schätzung und der vom Spiel gemeldeten "Verifizierten FpM". Dieser durchschnittliche Wert wird nun für die Anzeige und die Restlaufzeitberechnung verwendet, um maximale Genauigkeit zu gewährleisten.
     - ANPASSUNG: Die "Verifizierte FpM" Anzeige links vom Start/Stopp-Button zeigt nun den gemittelten Wert an.`,
@@ -32,7 +35,7 @@
     - FIX: **Wichtige Korrektur der 'plan.counter' Erfassung.** Die tatsächlich gesendeten Farmen (für die "Verifizierte FpM") werden nun korrekt über '#FarmGodProgessbar'.data('current') statt data('max') ausgelesen. Dies behebt die Ungenauigkeit bei der FpM-Gegenprüfung.`,
 
         `v3.9.1-BETA (2025-08-01):
-    - FIX: Korrektur der 'plan.counter' Erfassung. Die Anzahl der gesendeten Farmen wird nun direkt von der '#FarmGodProgessbar' (data('max')) ausgelesen, was eine robustere und genauere Erfassung gewährleistet.
+    - FIX: Korrektur der 'plan.counter' Erfassung. Die Anzahl der gesendeten Farmen wird nun direkt von der '#FarmGodProgessbar' (data('max')) ausgelesen, was robuster und genauer ist.
     - VERBESSERUNG: Konsolen-Logs für die 'plan.counter'-Erfassung beim Start/Stopp wurden angepasst, um die verbesserte Methode widerzuspiegeln.`,
 
         `v3.9.0-BETA (2025-08-01):
@@ -763,7 +766,7 @@
     let toggleButtonRef = null;
     let statusBarRef = null;
     let mainContainerRef = null;
-    let verifiedFpmStatusRef = null; // Referenz für das neue FpM-Gegenprüfungsfeld
+    // let verifiedFpmStatusRef = null; // Diese Referenz wird nun entfernt
 
     function updateFarmsPerMinuteCalculation() {
         // Diese Funktion berechnet FpM und speichert sie in calculatedFarmsPerMinute
@@ -838,7 +841,7 @@
 
         const pad = (num) => num.toString().padStart(2, '0');
 
-        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+        return `${pad(hours)}:${pad(minutes)}}:${pad(seconds)}`;
     }
 
 
@@ -875,13 +878,13 @@
         }
 
 
-        const farmsPerMinuteText = (autoActionActive && averageFarmsPerMinute > 0) ? `(${averageFarmsPerMinute} Farms/Min)` : '';
+        let farmsPerMinuteDisplay = (averageFarmsPerMinute > 0) ? `(${averageFarmsPerMinute} FpM)` : '';
 
         // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen (basierend auf averageFarmsPerMinute)
         let totalFarmsRemainingTimeText = '';
         if (autoActionActive && averageFarmsPerMinute > 0 && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
             const farmGodProgressbarMax = $('#FarmGodProgessbar').data('max');
-            const farmGodProgressbarVal = $('#FarmGodProgessbar').data('current'); // ACHTUNG: Hier data('current') nutzen!
+            const farmGodProgressbarVal = $('#FarmGodProgessbar').data('current');
 
             if (farmGodProgressbarMax !== undefined && farmGodProgressbarVal !== undefined) {
                 const remainingFarms = farmGodProgressbarMax - farmGodProgressbarVal;
@@ -902,6 +905,13 @@
                     }
                 }
             }
+        }
+
+        // --- Laufzeit-Anzeige in der Statusleiste ---
+        let currentDurationText = '';
+        if (autoActionActive && autoActionStartTime > 0) {
+            const currentDuration = Date.now() - autoActionStartTime;
+            currentDurationText = ` | LZ: ${formatDuration(currentDuration)}`;
         }
 
 
@@ -926,18 +936,19 @@
         if (botProtectionDetected) {
             statusBarBgColor = '#dc3545'; // Rot
             currentTabTitle = `[BOTSCHUTZ PAUSE] TW Auto-Action | ${originalDocumentTitle}`;
-            statusText = `[BOTSCHUTZ] Auto-Action pausiert! ${farmsPerMinuteText}`;
+            statusText = `[BOTSCHUTZ] Auto-Action pausiert! ${farmsPerMinuteDisplay}`;
         } else if (autoActionActive) {
             statusBarBgColor = '#28a745'; // Grün
-            currentTabTitle = `[AKTIV] TW Auto-Action ${farmsPerMinuteText}${totalFarmsRemainingTimeText} | ${originalDocumentTitle}`;
-            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteText}${totalFarmsRemainingTimeText}`;
+            currentTabTitle = `[AKTIV] TW Auto-Action ${farmsPerMinuteDisplay}${totalFarmsRemainingTimeText} | ${originalDocumentTitle}`;
+            // Statusleiste enthält jetzt FpM und Laufzeit
+            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteDisplay}${currentDurationText}${totalFarmsRemainingTimeText}`;
         } else if (noFarmButtonsDetected) {
             statusBarBgColor = '#ffc107'; // Gelb
             currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
-            statusText = `[KEINE BUTTONS] Auto-Action gestoppt. ${farmsPerMinuteText}`;
+            statusText = `[KEINE BUTTONS] Auto-Action gestoppt. ${farmsPerMinuteDisplay}`;
         } else {
             statusBarBgColor = '#ffc107'; // Gelb
-            statusText = `Auto-Action ist inaktiv. ${farmsPerMinuteText}`;
+            statusText = `Auto-Action ist inaktiv. ${farmsPerMinuteDisplay}`;
         }
 
         document.title = currentTabTitle;
@@ -950,39 +961,7 @@
             });
         }
 
-        // Update des neuen Feldes für Laufzeit / verifizierte FpM (jetzt durchschnittliche FpM)
-        if (verifiedFpmStatusRef) {
-            if (autoActionActive) {
-                const currentDuration = Date.now() - autoActionStartTime;
-                if (averageFarmsPerMinute > 0 && currentDuration >= VERIFIED_FPM_UPDATE_INTERVAL_MS) {
-                     verifiedFpmStatusRef.text(`FpM: ${averageFarmsPerMinute} | LZ: ${formatDuration(currentDuration)}`);
-                     verifiedFpmStatusRef.css({
-                        'background-color': '#4CAF50', // Grün, wenn FpM angezeigt wird
-                        'color': '#ffffff'
-                    });
-                } else {
-                     verifiedFpmStatusRef.text(`Laufzeit: ${formatDuration(currentDuration)}`);
-                     verifiedFpmStatusRef.css({
-                        'background-color': '#007bff', // Blau für Laufzeit
-                        'color': '#ffffff'
-                    });
-                }
-            } else {
-                 if (averageFarmsPerMinute > 0) {
-                     verifiedFpmStatusRef.text(`Letzte FpM: ${averageFarmsPerMinute}`);
-                     verifiedFpmStatusRef.css({
-                         'background-color': '#ffc107', // Gelb, wenn gestoppt und letzte FpM angezeigt wird
-                         'color': '#ffffff'
-                     });
-                 } else {
-                     verifiedFpmStatusRef.text(''); // Leer, wenn inaktiv und keine FpM
-                     verifiedFpmStatusRef.css({
-                        'background-color': '#ffc107', // Standard gelb
-                        'color': '#ffffff'
-                    });
-                 }
-            }
-        }
+        // Das ehemalige "verifiedFpmStatusRef" Feld wird nun nicht mehr aktualisiert, da es entfernt wurde.
     }
 
     function addAmFarmSettingsButton() {
@@ -1040,21 +1019,8 @@
             </div>
         `;
 
-        // Neues HTML für die verifizierte FpM-Anzeige / Laufzeit-Anzeige
-        const verifiedFpmStatusHtml = `
-            <div id="tw_auto_action_verified_fpm_status" style="
-                background-color: #ffc107;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 3px;
-                font-size: 12px;
-                text-align: center;
-                white-space: nowrap;
-                min-width: 100px; /* Mindestbreite anpassen für Laufzeit */
-                flex-shrink: 0; /* Verhindert Schrumpfen */
-            ">
-                </div>
-        `;
+        // Das HTML für das separate FpM/Laufzeit-Feld wird hier komplett entfernt.
+        // const verifiedFpmStatusHtml = `...`;
 
         const mainContainerHtml = `
             <div id="tw_auto_action_main_container" style="
@@ -1067,7 +1033,7 @@
                 width: 100%;
                 box-sizing: border-box;
             ">
-                ${verifiedFpmStatusHtml} ${toggleButtonHtml}
+                ${toggleButtonHtml}
                 ${settingsButtonHtml}
                 ${statusBarHtml}
             </div>
@@ -1076,7 +1042,7 @@
         targetElement.before(mainContainerHtml);
 
         mainContainerRef = $('#tw_auto_action_main_container');
-        verifiedFpmStatusRef = mainContainerRef.find('#tw_auto_action_verified_fpm_status'); // Referenz zuweisen
+        // verifiedFpmStatusRef = mainContainerRef.find('#tw_auto_action_verified_fpm_status'); // Diese Referenz wird nun nicht mehr benötigt
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
         statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
