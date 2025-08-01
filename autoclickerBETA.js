@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.6 // Version auf 3.9.6 aktualisiert
+// @version      3.8.0 // Version auf 3.8.0 aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,37 +17,16 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.6'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.8.0'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
-    // --- Alle Changelog-Einträge ---
+    // --- Alle Changelog-Einträge (die vollständige Historie) ---
     const ALL_CHANGELOG_ENTRIES = [
-        `v3.9.6 (2025-08-01):
-    - Anpassung: Die Anzeige der "geschätzten Gesamtrestzeit" wurde auf das kompaktere Format "Xxm:XXs" geändert. Bei Stunden wird weiterhin "Xxh Xxm:XXs" angezeigt.`,
-
-        `v3.9.5 (2025-08-01):
-    - FIX: Das Skript klickt jetzt wieder zuverlässig die Farm-Buttons. Ein Fehler in der Intervall-Neustart-Logik wurde behoben.`,
-
-        `v3.9.4 (2025-08-01):
-    - Anpassung: Die Anzeige der "Restzeit bis zum nächsten Klick" in der Statusleiste und im Tab-Titel wurde entfernt, um die Übersichtlichkeit zu verbessern.`,
-
-        `v3.9.3 (2025-08-01):
-    - FIX: Die Anzeige der "Restzeit bis zum nächsten Klick" und der "geschätzten Gesamtrestzeit" aktualisiert sich nun wieder korrekt und dauerhaft alle 500ms. Die FpM-Berechnung bleibt wie gewünscht stabil alle 5 Sekunden.`,
-
-        `v3.9.2 (2025-08-01):
-    - Verbesserung: Die Anzeige der "Farms pro Minute" (FpM) aktualisiert sich nun nur noch alle 5 Sekunden, um eine stabilere Anzeige zu gewährleisten. Die zugrundeliegende Klick-Zählung bleibt jedoch weiterhin präzise.`,
-
-        `v3.9.1 (2025-08-01):
-    - Anzeige der Zeit bis zum nächsten Klick im Format "Minuten:Sekunden".
-    - Entfernung der Anzeige "Klick ausstehend".`,
-
-        `v3.9.0 (2025-08-01):
-    - NEU: Anzeige der geschätzten Restlaufzeit, um alle verfügbaren Farmen abzuarbeiten, basierend auf FarmGod-Daten.`,
-
         `v3.8.0 (2025-08-01):
-    - NEU: Anzeige der geschätzten Restzeit bis zum nächsten Klick in der Statusleiste und im Tab-Titel.`,
+    - FIX: Behebung eines Fehlers, der dazu führte, dass das Skript manchmal nach dem ersten Klick nicht mehr korrekt das Intervall neu startete. Dies stellt die zuverlässige Fortsetzung der Klicks sicher.
+    - REINIGUNG: Entfernung alter, nicht mehr benötigter Variablen und Konsolen-Logs.`, // Nur die wirklich neuen/relevanten Änderungen hier
 
         `v3.7.2 (2025-08-01):
     - Changelog-Button im Einstellungsdialog verkleinert und direkt neben der Version platziert.`,
@@ -89,7 +68,8 @@
     - NEU: Hotkey-Unterstützung (Standard: Shift+Strg+E) zum Starten/Stoppen.
     - Zufälliges Intervall für Klicks hinzugefügt.
     - Erkennung von Botschutz-Abfragen und automatische Pause.
-    - Statusanzeige im Tab-Titel.`
+    - Statusanzeige im Tab-Titel.
+    - Anzeige der geschätzten Gesamtrestzeit zum Abarbeiten aller Farmen.`
     ];
 
     // --- Generiere das Changelog für den Alert (erste 2 Versionen) ---
@@ -291,7 +271,7 @@
             'div#tooltip:contains("Bot-Schutz")',
             '#bot_protect_dialog',
             '.popup_box_container:contains("Sicherheitsabfrage")',
-            '#content_value:contains("Sicherheitsabfrage")', // Added this for broader detection
+            '#content_value:contains("Sicherheitsabfrage")',
             '.popup_box_container:contains("Bot-Schutz")',
             'div[data-bot-check="true"]',
             'img[src*="captcha"]',
@@ -778,9 +758,9 @@
                     let formattedSeconds = seconds.toString().padStart(2, '0');
 
                     if (hours > 0) {
-                        totalFarmsRemainingTimeText = ` | Rest: ${hours}h ${formattedMinutes}m:${formattedSeconds}s`;
+                        totalFarmsRemainingTimeText = ` | Rest: ${hours}h ${minutes}m:${formattedSeconds}s`;
                     } else {
-                        totalFarmsRemainingTimeText = ` | Rest: ${minutes}m:${formattedSeconds}s`; // Changed to Xxm:XXs
+                        totalFarmsRemainingTimeText = ` | Rest: ${minutes}m:${formattedSeconds}s`;
                     }
                 }
             }
