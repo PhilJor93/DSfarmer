@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace     TribalWars
-// @version       3.7.1 // Version auf 3.7.1 aktualisiert - Changelog auf 5 Versionen begrenzt
+// @version       3.7.2 // Version auf 3.7.2 aktualisiert - Changelog-Button Position und Größe
 // @description   Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min Anzeige und Changelog.
 // @author        Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match         https://*.die-staemme.de/game.php?*
@@ -17,13 +17,16 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.7.1'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.7.2'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.7.2 (2025-08-01):
+    - Changelog-Button im Einstellungsdialog verkleinert und direkt neben der Version platziert.`,
+
         `v3.7.1 (2025-08-01):
     - Anzeige des Changelogs (Pop-up und manuell) auf die letzten 5 Versionen begrenzt.`,
 
@@ -448,8 +451,19 @@
 
         const dialogContentHtml = `
             <div id="tw_auto_action_settings_dialog_content" style="padding: 15px; background-color: #f7f3e6; border: 1px solid #804000; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.5); max-width: 400px; margin: 20px; position: relative;">
-                <button id="tw_auto_action_show_changelog" class="btn" style="position: absolute; top: 10px; right: 10px; padding: 5px 10px; font-size: 10px; border: 1px solid #804000; background-color: #d1b790; color: #FFFFFF;">Changelog</button>
-                <h3>Auto-Action Einstellungen (v${SCRIPT_VERSION})</h3>
+                <h3>Auto-Action Einstellungen (v${SCRIPT_VERSION})
+                    <button id="tw_auto_action_show_changelog" class="btn" style="
+                        margin-left: 10px;
+                        padding: 3px 8px; /* Kleinerer Padding */
+                        font-size: 10px; /* Kleinere Schriftgröße */
+                        border: 1px solid #804000;
+                        background-color: #d1b790;
+                        color: #FFFFFF;
+                        vertical-align: middle; /* Vertikale Ausrichtung */
+                        display: inline-block; /* Inline-Block für die Positionierung neben Text */
+                        margin-top: -2px; /* Leichte Anpassung nach oben, falls nötig */
+                    ">Changelog</button>
+                </h3>
                 <style>
                     #tw_auto_action_settings_dialog_content table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                     #tw_auto_action_settings_dialog_content th, #tw_auto_action_settings_dialog_content td { padding: 5px; border: 1px solid #ddd; text-align: left; }
@@ -483,6 +497,12 @@
                         margin-top: 0;
                         border-bottom: 1px solid #804000;
                         padding-bottom: 5px;
+                        display: flex; /* Flexbox für H3 Inhalt */
+                        align-items: center; /* Vertikale Zentrierung */
+                        justify-content: space-between; /* Abstand zwischen Text und Button */
+                    }
+                    #tw_auto_action_settings_dialog_content h3 span { /* Für den Textteil des H3 */
+                        flex-grow: 1;
                     }
                     #tw_auto_action_settings_dialog_content label {
                         display: inline-flex;
@@ -557,6 +577,23 @@
         `);
 
         $('body').append(customDialogElement);
+
+        // Anpassung des H3-Inhalts, um den Text und den Button korrekt zu trennen
+        $('#tw_auto_action_settings_dialog_content h3').html(`
+            <span>Auto-Action Einstellungen (v${SCRIPT_VERSION})</span>
+            <button id="tw_auto_action_show_changelog" class="btn" style="
+                margin-left: 10px;
+                padding: 3px 8px; /* Kleinerer Padding */
+                font-size: 10px; /* Kleinere Schriftgröße */
+                border: 1px solid #804000;
+                background-color: #d1b790;
+                color: #FFFFFF;
+                vertical-align: middle;
+                display: inline-block;
+                margin-top: -2px;
+            ">Changelog</button>
+        `);
+
 
         $('#tw_auto_action_save_settings').on('click', () => {
             const newToggleKeyChar = $('#setting_toggle_key_char').val().toUpperCase();
