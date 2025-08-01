@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.4-BETA // Version auf 3.9.4-BETA aktualisiert
+// @version      3.9.5-BETA // Version auf 3.9.5-BETA aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,13 +17,16 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.4-BETA'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.5-BETA'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge (die vollständige Historie) ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.5-BETA (2025-08-01):
+    - ANPASSUNG: Die Anzeige der "Laufzeit" wurde aus der Haupt-Statusleiste entfernt. Die Statusleiste konzentriert sich nun ausschließlich auf die **FpM** und die **Restlaufzeit** der Farmen.`,
+
         `v3.9.4-BETA (2025-08-01):
     - ANPASSUNG: Das separate Feld für "FpM" und "Laufzeit" links vom Start/Stopp-Button wurde entfernt. Diese Informationen werden nun direkt und kompakter in die Haupt-Statusleiste integriert, wenn die Auto-Action aktiv ist.`,
 
@@ -226,7 +229,6 @@
                 console.log('TW Auto-Action: AudioContext erfolgreich fortgesetzt. Zustand:', context.state);
             }).catch(e => {
                 console.error("TW Auto-Action: FEHLER beim Fortsetzen des AudioContext.", e);
-                throw e; // Fehler weiterwerfen
             });
         }
         return Promise.resolve(); // Kontext ist bereits running oder kein Kontext
@@ -766,7 +768,6 @@
     let toggleButtonRef = null;
     let statusBarRef = null;
     let mainContainerRef = null;
-    // let verifiedFpmStatusRef = null; // Diese Referenz wird nun entfernt
 
     function updateFarmsPerMinuteCalculation() {
         // Diese Funktion berechnet FpM und speichert sie in calculatedFarmsPerMinute
@@ -841,7 +842,7 @@
 
         const pad = (num) => num.toString().padStart(2, '0');
 
-        return `${pad(hours)}:${pad(minutes)}}:${pad(seconds)}`;
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
     }
 
 
@@ -907,12 +908,12 @@
             }
         }
 
-        // --- Laufzeit-Anzeige in der Statusleiste ---
-        let currentDurationText = '';
-        if (autoActionActive && autoActionStartTime > 0) {
-            const currentDuration = Date.now() - autoActionStartTime;
-            currentDurationText = ` | LZ: ${formatDuration(currentDuration)}`;
-        }
+        // --- Laufzeit-Anzeige ist hier explizit entfernt worden ---
+        // let currentDurationText = '';
+        // if (autoActionActive && autoActionStartTime > 0) {
+        //     const currentDuration = Date.now() - autoActionStartTime;
+        //     currentDurationText = ` | LZ: ${formatDuration(currentDuration)}`;
+        // }
 
 
         const defaultButtonBg = '#f0e2b6';
@@ -940,8 +941,8 @@
         } else if (autoActionActive) {
             statusBarBgColor = '#28a745'; // Grün
             currentTabTitle = `[AKTIV] TW Auto-Action ${farmsPerMinuteDisplay}${totalFarmsRemainingTimeText} | ${originalDocumentTitle}`;
-            // Statusleiste enthält jetzt FpM und Laufzeit
-            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteDisplay}${currentDurationText}${totalFarmsRemainingTimeText}`;
+            // Statusleiste enthält jetzt nur FpM und Restzeit
+            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteDisplay}${totalFarmsRemainingTimeText}`;
         } else if (noFarmButtonsDetected) {
             statusBarBgColor = '#ffc107'; // Gelb
             currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
@@ -960,8 +961,6 @@
                 'color': '#ffffff'
             });
         }
-
-        // Das ehemalige "verifiedFpmStatusRef" Feld wird nun nicht mehr aktualisiert, da es entfernt wurde.
     }
 
     function addAmFarmSettingsButton() {
@@ -1019,9 +1018,6 @@
             </div>
         `;
 
-        // Das HTML für das separate FpM/Laufzeit-Feld wird hier komplett entfernt.
-        // const verifiedFpmStatusHtml = `...`;
-
         const mainContainerHtml = `
             <div id="tw_auto_action_main_container" style="
                 display: flex;
@@ -1042,7 +1038,6 @@
         targetElement.before(mainContainerHtml);
 
         mainContainerRef = $('#tw_auto_action_main_container');
-        // verifiedFpmStatusRef = mainContainerRef.find('#tw_auto_action_verified_fpm_status'); // Diese Referenz wird nun nicht mehr benötigt
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
         statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
