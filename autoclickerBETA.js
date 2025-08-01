@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.8.0 // Version auf 3.8.0 aktualisiert
+// @version      3.9.0-BETA // Version auf 3.9.0-BETA aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,16 +17,20 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.8.0'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.0-BETA'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge (die vollständige Historie) ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.0-BETA (2025-08-01):
+    - BETA: Diese Version ist eine Testversion für zukünftige Verbesserungen.
+    - NEU: "Verifizierte FpM" Anzeige hinzugefügt, um die Genauigkeit der FpM-Berechnung zu überprüfen. Diese basiert auf der tatsächlichen Anzahl gesendeter Farmen (plan.counter) und der Skript-Laufzeit.`,
+
         `v3.8.0 (2025-08-01):
     - FIX: Behebung eines Fehlers, der dazu führte, dass das Skript manchmal nach dem ersten Klick nicht mehr korrekt das Intervall neu startete. Dies stellt die zuverlässige Fortsetzung der Klicks sicher.
-    - REINIGUNG: Entfernung alter, nicht mehr benötigter Variablen und Konsolen-Logs.`, // Nur die wirklich neuen/relevanten Änderungen hier
+    - REINIGUNG: Entfernung alter, nicht mehr benötigter Variablen und Konsolen-Logs.`,
 
         `v3.7.2 (2025-08-01):
     - Changelog-Button im Einstellungsdialog verkleinert und direkt neben der Version platziert.`,
@@ -157,15 +161,20 @@
     let botProtectionDetected = false;
     let noFarmButtonsDetected = false;
     let initialReadyMessageShown = false; // Flag für die initiale Nachricht
-    // nextClickTime wird nicht mehr direkt für die Anzeige genutzt, aber intern für das Intervall benötigt
     let nextClickTime = 0;
 
-    // *** Variablen für Farms/Minute ***
+    // --- Variablen für Farms/Minute (Schätzung des Skripts) ---
     const clickTimestamps = []; // Speichert Zeitstempel der letzten Klicks
     const MAX_TIMESTAMPS = 60; // Anzahl der Zeitstempel, die wir speichern, um die Rate zu berechnen (letzte Minute)
     let calculatedFarmsPerMinute = 0; // Speichert den zuletzt berechneten FpM-Wert
     let lastFpMCalculationTime = 0; // Zeitstempel der letzten FpM-Berechnung
     const FPM_UPDATE_INTERVAL_MS = 5000; // FpM alle 5 Sekunden aktualisieren
+
+    // --- NEUE Variablen für verifizierte FpM ---
+    let farmGodInitialCounter = 0;
+    let autoActionStartTime = 0;
+    let verifiedFarmsPerMinute = 0;
+    const VERIFIED_FPM_UPDATE_INTERVAL_MS = 10000; // Verifizierte FpM alle 10 Sekunden aktualisieren
 
     // --- Hilfsfunktion zum Generieren eines zufälligen Intervalls ---
     function getRandomInterval(min, max) {
@@ -245,21 +254,12 @@
 
     // Funktion für den Aktivierungs-Test-Ton (spielt den aktuell ausgewählten Ton, entsperrt Context)
     function playActivationTestTone() {
-        // console.log('TW Auto-Action: Test-Ton durch Aktivierung angefordert...'); // Weniger Log-Spam
         if (!currentSettings.soundEnabled) {
             console.log('TW Auto-Action: Sound ist in den Einstellungen deaktiviert. Überspringe Test-Ton.');
             return;
         }
         const profileToPlay = soundProfiles[currentSettings.selectedSound] || soundProfiles['default'];
         createAndPlayOscillator(profileToPlay);
-    }
-
-    // Funktion zum Abspielen des ausgewählten Sounds aus den Einstellungen (für Vorschau)
-    function playSelectedSoundPreview() {
-        const selectedKey = $('#setting_selected_sound').val();
-        const profile = soundProfiles[selectedKey] || soundProfiles['default'];
-        console.log(`TW Auto-Action: Spiele Vorschau-Ton: ${profile.name}`);
-        createAndPlayOscillator(profile);
     }
 
     // --- Botschutz-Erkennung ---
@@ -299,6 +299,10 @@
                     clearInterval(autoActionIntervalId);
                     autoActionIntervalId = null;
                     autoActionActive = false;
+                    // Beim Stoppen durch Botschutz auch Zähler zurücksetzen
+                    farmGodInitialCounter = 0;
+                    autoActionStartTime = 0;
+                    verifiedFarmsPerMinute = 0;
                     if (typeof UI !== 'undefined' && typeof UI.ErrorMessage === 'function') {
                         UI.ErrorMessage('Botschutz-Abfrage erkannt! Auto-Action wurde gestoppt!', 5000);
                     }
@@ -354,6 +358,10 @@
                         clearInterval(autoActionIntervalId);
                         autoActionIntervalId = null;
                         autoActionActive = false;
+                        // Beim Stoppen durch fehlende Buttons auch Zähler zurücksetzen
+                        farmGodInitialCounter = 0;
+                        autoActionStartTime = 0;
+                        verifiedFarmsPerMinute = 0;
                         if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                             UI.InfoMessage('Keine Farm-Buttons gefunden oder sichtbar. Auto-Action gestoppt!', 3000);
                         }
@@ -372,6 +380,10 @@
                 clearInterval(autoActionIntervalId);
                 autoActionIntervalId = null;
                 autoActionActive = false;
+                // Beim Stoppen durch Seitenwechsel auch Zähler zurücksetzen
+                farmGodInitialCounter = 0;
+                autoActionStartTime = 0;
+                verifiedFarmsPerMinute = 0;
                 if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                     UI.InfoMessage('Auto-Action automatisch gestoppt (nicht auf Farm-Seite).', 3000);
                 }
@@ -413,9 +425,14 @@
             autoActionActive = false;
             // Klick-Historie zurücksetzen, wenn gestoppt wird
             clickTimestamps.length = 0;
-            nextClickTime = 0; // Nächste Klickzeit zurücksetzen (intern)
-            calculatedFarmsPerMinute = 0; // FpM zurücksetzen
-            lastFpMCalculationTime = 0; // FpM Zeitstempel zurücksetzen
+            nextClickTime = 0;
+            calculatedFarmsPerMinute = 0;
+            lastFpMCalculationTime = 0;
+
+            // Zähler für verifizierte FpM zurücksetzen
+            farmGodInitialCounter = 0;
+            autoActionStartTime = 0;
+            verifiedFarmsPerMinute = 0;
 
             if (typeof UI !== 'undefined' && typeof UI.InfoMessage === 'function') {
                 UI.InfoMessage('Auto-Action gestoppt.', 2000);
@@ -442,9 +459,20 @@
             autoActionActive = true;
             if (autoActionIntervalId) clearInterval(autoActionIntervalId);
 
+            // Initialisiere die Zähler für verifizierte FpM beim Start
+            if (typeof plan !== 'undefined' && typeof plan.counter === 'number') {
+                farmGodInitialCounter = plan.counter;
+            } else {
+                // Fallback, wenn plan.counter nicht verfügbar ist
+                farmGodInitialCounter = 0;
+                console.warn("TW Auto-Action: 'plan.counter' nicht gefunden. Verifizierte FpM könnte ungenau sein.");
+            }
+            autoActionStartTime = Date.now();
+            verifiedFarmsPerMinute = 0; // Setze initial auf 0 bis zur ersten Berechnung
+
             // Initialen Klick auslösen und dann das Intervall für die folgenden Klicks starten
             const initialInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
-            nextClickTime = Date.now() + initialInterval; // Nächste Klickzeit setzen (intern)
+            nextClickTime = Date.now() + initialInterval;
 
             // Führe den ersten Klick nach dem initialen Intervall aus
             autoActionIntervalId = setInterval(simulateButtonClick, initialInterval);
@@ -687,6 +715,7 @@
     let toggleButtonRef = null;
     let statusBarRef = null;
     let mainContainerRef = null;
+    let verifiedFpmStatusRef = null; // Referenz für das neue FpM-Gegenprüfungsfeld
 
     function updateFarmsPerMinuteCalculation() {
         // Diese Funktion berechnet FpM und speichert sie in calculatedFarmsPerMinute
@@ -722,6 +751,30 @@
         lastFpMCalculationTime = Date.now();
     }
 
+    // --- NEUE Funktion zur Berechnung der verifizierten FpM ---
+    function updateVerifiedFarmsPerMinute() {
+        if (!autoActionActive || autoActionStartTime === 0 || typeof plan === 'undefined' || typeof plan.counter !== 'number') {
+            verifiedFarmsPerMinute = 0;
+            return;
+        }
+
+        const currentTime = Date.now();
+        const elapsedTimeSeconds = (currentTime - autoActionStartTime) / 1000;
+
+        if (elapsedTimeSeconds < 10) { // Warte mindestens 10 Sekunden für eine sinnvolle Berechnung
+            verifiedFarmsPerMinute = 0; // Zeige nichts an, solange nicht genug Daten vorhanden
+            return;
+        }
+
+        const farmsSent = plan.counter - farmGodInitialCounter;
+
+        if (farmsSent <= 0) {
+            verifiedFarmsPerMinute = 0;
+        } else {
+            verifiedFarmsPerMinute = Math.round((farmsSent / elapsedTimeSeconds) * 60);
+        }
+    }
+
 
     function updateUIStatus() {
         let currentTabTitle = originalDocumentTitle;
@@ -736,8 +789,17 @@
              lastFpMCalculationTime = 0;
         }
 
+        // Verifizierte FpM Berechnung nur, wenn genug Zeit seit letzter Berechnung vergangen ist oder wenn Skript gerade gestartet/gestoppt wurde
+        if (autoActionActive && (Date.now() - autoActionStartTime >= VERIFIED_FPM_UPDATE_INTERVAL_MS || autoActionStartTime === 0)) {
+             updateVerifiedFarmsPerMinute();
+        } else if (!autoActionActive) {
+             verifiedFarmsPerMinute = 0; // Auch hier zurücksetzen, wenn inaktiv
+        }
+
 
         const farmsPerMinuteText = (autoActionActive && calculatedFarmsPerMinute > 0) ? `(${calculatedFarmsPerMinute} Farms/Min)` : '';
+        const verifiedFpmText = (autoActionActive && verifiedFarmsPerMinute > 0) ? ` (Verifiziert: ${verifiedFarmsPerMinute} FpM)` : '';
+
 
         // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen (Immer aktuell berechnen, basierend auf dem gestabilisierten FpM)
         let totalFarmsRemainingTimeText = '';
@@ -811,6 +873,22 @@
                 'color': '#ffffff'
             });
         }
+
+        // Update des neuen Feldes für verifizierte FpM
+        if (verifiedFpmStatusRef) {
+            verifiedFpmStatusRef.text(verifiedFpmText.trim() === '' ? '' : verifiedFpmText.replace(/[()]/g, '')); // Klammern entfernen
+            if (autoActionActive && verifiedFarmsPerMinute > 0) {
+                verifiedFpmStatusRef.css({
+                    'background-color': '#4CAF50', // Grün, wenn aktiv und Werte da sind
+                    'color': '#ffffff'
+                });
+            } else {
+                verifiedFpmStatusRef.css({
+                    'background-color': '#ffc107', // Gelb, wenn inaktiv oder keine Werte
+                    'color': '#ffffff'
+                });
+            }
+        }
     }
 
     function addAmFarmSettingsButton() {
@@ -868,6 +946,22 @@
             </div>
         `;
 
+        // Neues HTML für die verifizierte FpM-Anzeige
+        const verifiedFpmStatusHtml = `
+            <div id="tw_auto_action_verified_fpm_status" style="
+                background-color: #ffc107;
+                color: white;
+                padding: 5px 10px;
+                border-radius: 3px;
+                font-size: 12px;
+                text-align: center;
+                white-space: nowrap;
+                min-width: 50px; /* Mindestbreite */
+                flex-shrink: 0; /* Verhindert Schrumpfen */
+            ">
+                </div>
+        `;
+
         const mainContainerHtml = `
             <div id="tw_auto_action_main_container" style="
                 display: flex;
@@ -879,7 +973,7 @@
                 width: 100%;
                 box-sizing: border-box;
             ">
-                ${toggleButtonHtml}
+                ${verifiedFpmStatusHtml} ${toggleButtonHtml}
                 ${settingsButtonHtml}
                 ${statusBarHtml}
             </div>
@@ -888,9 +982,11 @@
         targetElement.before(mainContainerHtml);
 
         mainContainerRef = $('#tw_auto_action_main_container');
+        verifiedFpmStatusRef = mainContainerRef.find('#tw_auto_action_verified_fpm_status'); // Referenz zuweisen
         toggleButtonRef = mainContainerRef.find('#tw_auto_action_toggle_button');
         settingsButtonRef = mainContainerRef.find('#tw_auto_action_settings_button');
         statusBarRef = mainContainerRef.find('#tw_auto_action_status_bar');
+
 
         if (settingsButtonRef.length > 0) {
             settingsButtonRef.on('click', (e) => {
@@ -1012,6 +1108,7 @@
             // FpM initial berechnen, wenn das Skript startet und Farmen verfügbar sind
             if (autoActionActive) {
                 updateFarmsPerMinuteCalculation(); // Beim Start initial einmal berechnen
+                updateVerifiedFarmsPerMinute(); // Und die verifizierte FpM
             }
             updateUIStatus(); // Initialen Status setzen, bevor Intervalle laufen
         });
