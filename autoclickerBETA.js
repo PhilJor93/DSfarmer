@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.2 // Version auf 3.9.2 aktualisiert
+// @version      3.9.4 // Version auf 3.9.4 aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,13 +17,19 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.2'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.4'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.4 (2025-08-01):
+    - Anpassung: Die Anzeige der "Restzeit bis zum nächsten Klick" in der Statusleiste und im Tab-Titel wurde entfernt, um die Übersichtlichkeit zu verbessern.`,
+
+        `v3.9.3 (2025-08-01):
+    - FIX: Die Anzeige der "Restzeit bis zum nächsten Klick" und der "geschätzten Gesamtrestzeit" aktualisiert sich nun wieder korrekt und dauerhaft alle 500ms. Die FpM-Berechnung bleibt wie gewünscht stabil alle 5 Sekunden.`,
+
         `v3.9.2 (2025-08-01):
     - Verbesserung: Die Anzeige der "Farms pro Minute" (FpM) aktualisiert sich nun nur noch alle 5 Sekunden, um eine stabilere Anzeige zu gewährleisten. Die zugrundeliegende Klick-Zählung bleibt jedoch weiterhin präzise.`,
 
@@ -165,7 +171,8 @@
     let botProtectionDetected = false;
     let noFarmButtonsDetected = false;
     let initialReadyMessageShown = false; // Flag für die initiale Nachricht
-    let nextClickTime = 0; // Zeitstempel für den nächsten geplanten Klick (für Restzeitanzeige)
+    // nextClickTime wird nicht mehr direkt für die Anzeige genutzt, aber intern für das Intervall benötigt
+    let nextClickTime = 0;
 
     // *** Variablen für Farms/Minute ***
     const clickTimestamps = []; // Speichert Zeitstempel der letzten Klicks
@@ -348,7 +355,7 @@
                     noFarmButtonsDetected = false;
                 }
                 farmButton.trigger('click');
-                updateUIStatus(); // UI nach jedem Klick aktualisieren für Restzeit und Status
+                // UI wird durch das setInterval(updateUIStatus, 500) aktualisiert
             } else {
                 if (!noFarmButtonsDetected) {
                     noFarmButtonsDetected = true;
@@ -405,7 +412,7 @@
             autoActionActive = false;
             // Klick-Historie zurücksetzen, wenn gestoppt wird
             clickTimestamps.length = 0;
-            nextClickTime = 0; // Nächste Klickzeit zurücksetzen
+            nextClickTime = 0; // Nächste Klickzeit zurücksetzen (intern)
             calculatedFarmsPerMinute = 0; // FpM zurücksetzen
             lastFpMCalculationTime = 0; // FpM Zeitstempel zurücksetzen
 
@@ -435,13 +442,13 @@
             if (autoActionIntervalId) clearInterval(autoActionIntervalId);
 
             const initialInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
-            nextClickTime = Date.now() + initialInterval; // Nächste Klickzeit setzen
+            nextClickTime = Date.now() + initialInterval; // Nächste Klickzeit setzen (intern)
             autoActionIntervalId = setInterval(() => {
                 simulateButtonClick();
                 clearInterval(autoActionIntervalId); // Vorheriges Intervall löschen
                 if (autoActionActive) {
                     const newInterval = getRandomInterval(currentSettings.minInterval, currentSettings.maxInterval);
-                    nextClickTime = Date.now() + newInterval; // Nächste Klickzeit für Folgeintervall setzen
+                    nextClickTime = Date.now() + newInterval; // Nächste Klickzeit für Folgeintervall setzen (intern)
                     autoActionIntervalId = setInterval(simulateButtonClick, newInterval);
                 }
             }, initialInterval);
@@ -457,7 +464,7 @@
             }
             noFarmButtonsDetected = false;
         }
-        updateUIStatus();
+        updateUIStatus(); // UI sofort aktualisieren nach Start/Stop
     };
 
     // --- PRÄZISER SELEKTOR FÜR BELIEBIGEN FARMGOD BUTTON ---
@@ -685,8 +692,9 @@
     let statusBarRef = null;
     let mainContainerRef = null;
 
-    function updateFarmsPerMinute() {
+    function updateFarmsPerMinuteCalculation() {
         // Diese Funktion berechnet FpM und speichert sie in calculatedFarmsPerMinute
+        // Diese Funktion wird alle 5s aufgerufen, wenn aktiv
         let farmsPerMinute = 0;
         if (clickTimestamps.length > 0) {
             const now = Date.now();
@@ -724,29 +732,18 @@
         let statusText = 'TW Auto-Action ist bereit.';
         let statusBarBgColor = '#ffc107'; // Standard: Gelb
 
-        // Farms/Min Berechnung nur, wenn genug Zeit seit letzter Berechnung vergangen ist oder wenn Skript gerade gestartet/gestoppt wurde
+        // FpM Berechnung nur, wenn genug Zeit seit letzter Berechnung vergangen ist oder wenn Skript gerade gestartet/gestoppt wurde
         if (autoActionActive && (Date.now() - lastFpMCalculationTime >= FPM_UPDATE_INTERVAL_MS || lastFpMCalculationTime === 0)) {
-            updateFarmsPerMinute();
-        } else if (!autoActionActive && calculatedFarmsPerMinute !== 0) {
-             // FpM auf 0 setzen, wenn Skript nicht aktiv ist
+            updateFarmsPerMinuteCalculation();
+        } else if (!autoActionActive && calculatedFarmsPerMinute !== 0 && lastFpMCalculationTime !== 0) { // FpM auf 0 setzen, wenn Skript inaktiv wird
              calculatedFarmsPerMinute = 0;
+             lastFpMCalculationTime = 0;
         }
+
 
         const farmsPerMinuteText = (autoActionActive && calculatedFarmsPerMinute > 0) ? `(${calculatedFarmsPerMinute} Farms/Min)` : '';
 
-        // Restzeit bis zum nächsten Klick
-        let nextClickRemainingTimeText = '';
-        if (autoActionActive && nextClickTime > 0) {
-            const timeRemainingMs = nextClickTime - Date.now();
-            if (timeRemainingMs > 0) {
-                const totalSeconds = Math.max(0, Math.floor(timeRemainingMs / 1000));
-                const minutes = Math.floor(totalSeconds / 60);
-                const seconds = totalSeconds % 60;
-                nextClickRemainingTimeText = ` (Nächster: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')} min)`;
-            }
-        }
-
-        // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen
+        // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen (Immer aktuell berechnen, basierend auf dem gestabilisierten FpM)
         let totalFarmsRemainingTimeText = '';
         if (autoActionActive && calculatedFarmsPerMinute > 0 && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
             const farmGodProgressbarMax = $('#FarmGodProgessbar').data('max');
@@ -754,7 +751,7 @@
 
             if (farmGodProgressbarMax !== undefined && farmGodProgressbarVal !== undefined) {
                 const remainingFarms = farmGodProgressbarMax - farmGodProgressbarVal;
-                if (remainingFrams > 0) {
+                if (remainingFarms > 0) {
                     const estimatedMinutesFloat = remainingFarms / calculatedFarmsPerMinute;
                     const totalSecondsEstimate = Math.max(0, Math.round(estimatedMinutesFloat * 60));
                     const hours = Math.floor(totalSecondsEstimate / 3600);
@@ -795,8 +792,8 @@
             statusText = `[BOTSCHUTZ] Auto-Action pausiert! ${farmsPerMinuteText}`;
         } else if (autoActionActive) {
             statusBarBgColor = '#28a745'; // Grün
-            currentTabTitle = `[AKTIV] TW Auto-Action ${farmsPerMinuteText}${nextClickRemainingTimeText}${totalFarmsRemainingTimeText} | ${originalDocumentTitle}`;
-            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteText}${nextClickRemainingTimeText}${totalFarmsRemainingTimeText}`;
+            currentTabTitle = `[AKTIV] TW Auto-Action ${farmsPerMinuteText}${totalFarmsRemainingTimeText} | ${originalDocumentTitle}`;
+            statusText = `[AKTIV] Auto-Action läuft... ${farmsPerMinuteText}${totalFarmsRemainingTimeText}`;
         } else if (noFarmButtonsDetected) {
             statusBarBgColor = '#ffc107'; // Gelb
             currentTabTitle = `[KEINE BUTTONS] TW Auto-Action | ${originalDocumentTitle}`;
@@ -965,7 +962,7 @@
                     (mutation.type === 'attributes' && mutation.target.id === 'FarmGodProgessbar' && (mutation.attributeName === 'value' || mutation.attributeName === 'data-max'))
                 );
 
-
+                // UI Status nur aktualisieren, wenn relevante Änderungen oder wenn das Skript aktiv ist
                 if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || relevantChange || farmGodProgressbarChanged) {
                     const botProtectionFound = checkAntiBotProtection();
 
@@ -1002,8 +999,8 @@
 
             observer.observe(document.body, observerConfig);
 
-            // Interval für regelmäßige UI-Updates (500ms), FpM wird intern nur alle 5s berechnet
-            setInterval(updateUIStatus, 500);
+            // Interval für regelmäßige UI-Updates
+            setInterval(updateUIStatus, 500); // UI alle 500ms aktualisieren
 
             // Initialen Status setzen
             checkAntiBotProtection();
@@ -1015,9 +1012,9 @@
             }
             // FpM initial berechnen, wenn das Skript startet und Farmen verfügbar sind
             if (autoActionActive) {
-                updateFarmsPerMinute();
+                updateFarmsPerMinuteCalculation(); // Beim Start initial einmal berechnen
             }
-            updateUIStatus();
+            updateUIStatus(); // Initialen Status setzen, bevor Intervalle laufen
         });
     }
 
