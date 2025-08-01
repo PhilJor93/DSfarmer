@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TW Auto-Action (Hotkey & Externe Trigger)
 // @namespace    TribalWars
-// @version      3.9.0 // Version auf 3.9.0 aktualisiert für Restlaufzeit
+// @version      3.9.1 // Version auf 3.9.1 aktualisiert
 // @description  Klickt den ersten FarmGod Button (A oder B) in zufälligem Intervall. Start/Stop per Tastenkombination (Standard: Shift+Strg+E) oder durch Aufruf von window.toggleTribalAutoAction(). Einstellungs-Button auf der Farm-Seite. Inkl. Farms/Min, Restlaufzeit und Changelog.
 // @author       Idee PhilJor93 Generiert mit Google Gemini-KI
 // @match        https://*.die-staemme.de/game.php?*
@@ -17,13 +17,17 @@
     }
     window.TW_AUTO_ENTER_INITIALIZED_MARKER = true;
 
-    const SCRIPT_VERSION = '3.9.0'; // Die aktuelle Version des Skripts
+    const SCRIPT_VERSION = '3.9.1'; // Die aktuelle Version des Skripts
 
     // Speichert den ursprünglichen Titel des Dokuments
     const originalDocumentTitle = document.title;
 
     // --- Alle Changelog-Einträge ---
     const ALL_CHANGELOG_ENTRIES = [
+        `v3.9.1 (2025-08-01):
+    - Anzeige der Zeit bis zum nächsten Klick im Format "Minuten:Sekunden".
+    - Entfernung der Anzeige "Klick ausstehend".`,
+
         `v3.9.0 (2025-08-01):
     - NEU: Anzeige der geschätzten Restlaufzeit, um alle verfügbaren Farmen abzuarbeiten, basierend auf FarmGod-Daten.`,
 
@@ -710,37 +714,38 @@
 
         const farmsPerMinuteText = (autoActionActive && farmsPerMinute > 0) ? `(${farmsPerMinute} Farms/Min)` : '';
 
-        // Restzeit bis zum nächsten Klick
+        // Restzeit bis zum nächsten Klick (NEU: Minuten:Sekunden Format)
         let nextClickRemainingTimeText = '';
         if (autoActionActive && nextClickTime > 0) {
             const timeRemainingMs = nextClickTime - Date.now();
             if (timeRemainingMs > 0) {
-                const seconds = Math.ceil(timeRemainingMs / 1000);
-                nextClickRemainingTimeText = ` (Nächster: ${seconds}s)`;
-            } else {
-                nextClickRemainingTimeText = ` (Klick ausstehend)`;
+                const totalSeconds = Math.max(0, Math.floor(timeRemainingMs / 1000)); // Mindestens 0 Sekunden
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                nextClickRemainingTimeText = ` (Nächster: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')} min)`;
             }
+            // "Klick ausstehend" wird nicht mehr angezeigt, da es durch 00:00 ersetzt wird oder einfach fehlt, wenn <0
         }
 
-        // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen (NEU)
+        // Geschätzte Restlaufzeit zum Abarbeiten aller Farmen (Minuten:Sekunden Format)
         let totalFarmsRemainingTimeText = '';
         if (autoActionActive && farmsPerMinute > 0 && typeof game_data !== 'undefined' && game_data.screen === 'am_farm') {
             const farmGodProgressbarMax = $('#FarmGodProgessbar').data('max');
-            const farmGodProgressbarVal = $('#FarmGodProgessbar').val(); // Aktueller Wert der Progressbar
+            const farmGodProgressbarVal = $('#FarmGodProgessbar').val();
 
             if (farmGodProgressbarMax !== undefined && farmGodProgressbarVal !== undefined) {
                 const remainingFarms = farmGodProgressbarMax - farmGodProgressbarVal;
                 if (remainingFarms > 0) {
-                    const estimatedMinutes = remainingFarms / farmsPerMinute;
-                    const hours = Math.floor(estimatedMinutes / 60);
-                    const minutes = Math.round(estimatedMinutes % 60);
+                    const estimatedMinutesFloat = remainingFarms / farmsPerMinute;
+                    const totalSecondsEstimate = Math.max(0, Math.round(estimatedMinutesFloat * 60)); // Runden auf ganze Sekunden
+                    const hours = Math.floor(totalSecondsEstimate / 3600);
+                    const minutes = Math.floor((totalSecondsEstimate % 3600) / 60);
+                    const seconds = totalSecondsEstimate % 60;
 
                     if (hours > 0) {
-                        totalFarmsRemainingTimeText = ` | Rest: ${hours}h ${minutes}m`;
-                    } else if (minutes > 0) {
-                        totalFarmsRemainingTimeText = ` | Rest: ${minutes}m`;
-                    } else if (remainingFarms > 0) {
-                         totalFarmsRemainingTimeText = ` | Rest: <1m`; // Für sehr kurze Restzeiten
+                        totalFarmsRemainingTimeText = ` | Rest: ${hours}h ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}m`;
+                    } else {
+                        totalFarmsRemainingTimeText = ` | Rest: ${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}m`;
                     }
                 }
             }
@@ -927,7 +932,7 @@
                 }, 1000);
             }
 
-            const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] };
+            const observerConfig = { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'value', 'data-max'] }; // 'value' und 'data-max' hinzugefügt
 
             const observer = new MutationObserver((mutationsList, observer) => {
                 const relevantChange = mutationsList.some(mutation =>
@@ -937,8 +942,10 @@
 
                 // Check FarmGod progressbar changes to update remaining time more actively
                 const farmGodProgressbarChanged = mutationsList.some(mutation =>
-                    $(mutation.target).is('#FarmGodProgessbar') || $(mutation.target).find('#FarmGodProgessbar').length > 0
+                    $(mutation.target).is('#FarmGodProgessbar') || $(mutation.target).find('#FarmGodProgessbar').length > 0 ||
+                    (mutation.type === 'attributes' && mutation.target.id === 'FarmGodProgessbar' && (mutation.attributeName === 'value' || mutation.attributeName === 'data-max'))
                 );
+
 
                 if (autoActionActive || botProtectionDetected || noFarmButtonsDetected || relevantChange || farmGodProgressbarChanged) {
                     const botProtectionFound = checkAntiBotProtection();
