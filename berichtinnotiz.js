@@ -365,10 +365,9 @@ const ReportNoteGenerator = {
             .text().replace(/\s+/g, " ").replace(/.{5}$/, "");
         let note = "";
 
-        // Decide which village type to show based on player perspective
-        if (this.data.player.isAttacker || this.data.player.wantsDefenderInfo) vType = this.data.village.defense.villageType;
-        if (this.data.player.isAttacker && !this.data.player.wantsAttackerInfo) vType = this.data.village.offense.villageType;
-        if (!this.data.player.isAttacker && this.data.player.wantsDefenderInfo) vType = this.data.village.defense.villageType;
+        // Always evaluate the opponent's side
+        // If I am the attacker, show defender type; if I am the defender, show attacker type
+        vType = this.data.player.isAttacker ? this.data.village.defense.villageType : this.data.village.offense.villageType;
 
         // Header with colored village type
         note += " | [color=#" + ((vType === _t("offensive") || vType === _t("probOffensive")) ? "ff0000" : "0eae0e") + "][b]" + vType + "[/b][/color] | ";
@@ -387,8 +386,8 @@ const ReportNoteGenerator = {
             }
         }
 
-        note += "[b][size=6]xD[/size][/b]";
-        note += "\n\n[b]" + reportTime + "[/b]";
+        note += "[b][size=6]Bericht[/size][/b]";
+        note += "\n\n [b]" + reportTime + "[/b]";
         note += "" + reportCode;
         return note;
     },
