@@ -9,13 +9,12 @@
     // Script configuration
     const ScriptData = {
         name: "Auto notes from report",
-        version: "v2.1",
-        lastUpdate: "2021-03-07", 
-        author: "xdam98",
-        authorContact: "Xico#7941 (Discord)"
+        version: "v1.0",
+        lastUpdate: "2024_08_10", 
+        author: "PhilJor93 with Ai-Assistance",
     };
 
-    const LS_prefix = "xd";
+    const LS_prefix = "reports";
 
     // Multi-language translations (German and English only)
     const translations = {
