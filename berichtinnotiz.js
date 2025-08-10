@@ -340,6 +340,18 @@ const ReportNoteGenerator = {
         const o = this.data.village.offense.troops;
         if (o.offensive > o.defensive) this.data.village.offense.villageType = _t("offensive");
         else if (o.offensive < o.defensive) this.data.village.offense.villageType = _t("defensive");
+
+        // Debug: log classification inputs/outputs
+        try {
+            /* eslint-disable no-console */
+            console.debug("[Reports] hasArchers=", this.data.world.hasArchers);
+            console.debug("[Reports] DEF inside:", d.inside);
+            console.debug("[Reports] DEF outside:", d.outside);
+            console.debug("[Reports] DEF supports:", d.supports, "type=", this.data.village.defense.villageType);
+            console.debug("[Reports] OFF totals:", o);
+            console.debug("[Reports] OFF type=", this.data.village.offense.villageType);
+            /* eslint-enable no-console */
+        } catch (e) { /* noop */ }
     },
 
     /**
@@ -360,6 +372,8 @@ const ReportNoteGenerator = {
 
         // Header with colored village type
         note += " | [color=#" + ((vType === _t("offensive") || vType === _t("probOffensive")) ? "ff0000" : "0eae0e") + "][b]" + vType + "[/b][/color] | ";
+        // Debug: show quick toast with chosen vType
+        try { UI.SuccessMessage("Type: " + vType, 1200); } catch (e) { /* noop */ }
 
         // Buildings and supports when viewing defender info
         if (this.data.player.isAttacker || this.data.player.wantsDefenderInfo) {
